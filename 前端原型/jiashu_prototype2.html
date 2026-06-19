@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>家书星球 - 星空漫游版</title>
+  <style>
+    :root {
+      /* 温馨深邃的夜空色系 */
+      --bg: #1f1a1d; 
+      --text: #fdf7ec; 
+      --muted: #cbbbae; 
+      
+      /* 星球与发光色 */
+      --glow-coral: #e59276; /* 珊瑚红，代表温暖、母亲 */
+      --glow-gold: #f2ce89;  /* 星光金，代表珍贵、孩子 */
+      --glow-blue: #8aa3a9;  /* 柔和灰蓝，代表宁静、父亲/自己 */
+      
+      --panel-bg: rgba(43, 36, 42, 0.75);
+      --font-heading: "Noto Serif SC", "Songti SC", serif;
+      --font-body: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      background: radial-gradient(circle at 50% 50%, #31262d, #1f1a1d 80%);
+      color: var(--text);
+      overflow: hidden; /* 禁用全局滚动，采用空间画布 */
+      letter-spacing: 0.02em;
+    }
+
+    /* 温暖星空背景 */
+    .stars {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        radial-gradient(#fdf7ec 0.8px, transparent 1px),
+        radial-gradient(#f2ce89 1.2px, transparent 1.5px);
+      background-size: 120px 120px, 200px 200px;
+      background-position: 0 0, 40px 70px;
+      opacity: 0.3;
+      animation: drift 100s linear infinite;
+    }
+    @keyframes drift { to { transform: translateY(-150px) translateX(-50px); } }
+
+    h1, h2, h3 { font-family: var(--font-heading); font-weight: 600; }
+
+    .app { display: flex; height: 100vh; position: relative; z-index: 1; }
+
+    /* 侧边导航栏 */
+    aside {
+      width: 260px;
+      background: linear-gradient(to right, rgba(31, 26, 29, 0.9), rgba(31, 26, 29, 0));
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+    .brand { display: flex; gap: 14px; align-items: center; margin-bottom: 40px; }
+    .logo {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #fffaf0, #f2ce89 20%, #e59276 55%, #6a4c52 80%);
+      box-shadow: 0 0 20px rgba(229, 146, 118, 0.4);
+    }
+    .brand h1 { font-size: 18px; letter-spacing: 0.05em; }
+    .brand p { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    .nav-btn {
+      width: 100%; border: none; background: transparent; color: var(--muted);
+      border-radius: 12px; padding: 14px 16px; text-align: left; cursor: pointer;
+      transition: 0.3s; font-size: 14px; margin-bottom: 4px;
+      position: relative; overflow: hidden;
+    }
+    .nav-btn:hover, .nav-btn.active { color: var(--text); background: rgba(253,246,235,0.05); }
+    .nav-btn.active::before {
+      content: ""; position: absolute; left: 0; top: 20%; height: 60%; width: 3px;
+      background: var(--glow-coral); border-radius: 4px;
+      box-shadow: 0 0 10px var(--glow-coral);
+    }
+
+    /* 主画布区域 */
+    main {
+      flex: 1; position: relative; display: flex; justify-content: center; align-items: center;
+    }
+
+    .screen {
+      position: absolute; inset: 0; opacity: 0; pointer-events: none;
+      transition: opacity 0.8s ease, transform 0.8s ease;
+      transform: scale(0.95);
+      display: flex; justify-content: center; align-items: center;
+    }
+    .screen.active { opacity: 1; pointer-events: auto; transform: scale(1); }
+
+    /* --- 星球与空间连接系统 --- */
+    .space-canvas { position: relative; width: 100%; height: 100%; }
+    
+    /* 真实的 SVG 连接线 */
+    .space-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .space-links line {
+      stroke: rgba(242, 206, 137, 0.4);
+      stroke-width: 1.5;
+      stroke-dasharray: 6 6;
+      animation: dash 30s linear infinite;
+      filter: drop-shadow(0 0 6px rgba(242, 206, 137, 0.6));
+    }
+    .space-links path {
+      fill: none; stroke: rgba(229, 146, 118, 0.6); stroke-width: 2;
+      filter: drop-shadow(0 0 8px rgba(229, 146, 118, 0.8));
+    }
+    @keyframes dash { to { stroke-dashoffset: -100; } }
+
+    /* 星球节点基础样式 */
+    .planet {
+      position: absolute; border-radius: 50%;
+      transform: translate(-50%, -50%);
+      cursor: pointer; z-index: 2;
+      display: flex; justify-content: center; align-items: center;
+      transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .planet:hover { transform: translate(-50%, -50%) scale(1.08); }
+    .planet-label {
+      position: absolute; bottom: -36px; white-space: nowrap;
+      font-size: 14px; font-family: var(--font-heading); color: var(--text);
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8); letter-spacing: 0.1em;
+      opacity: 0.8; transition: 0.3s;
+    }
+    .planet:hover .planet-label { opacity: 1; bottom: -40px; text-shadow: 0 0 10px var(--glow-gold); }
+
+    /* 各类星球的质感 */
+    .planet.mom {
+      width: 140px; height: 140px;
+      background: radial-gradient(circle at 30% 30%, #fff0dc, #e59276 40%, #7d4b4a 80%);
+      box-shadow: 0 0 60px rgba(229, 146, 118, 0.3), inset -16px -16px 30px rgba(0,0,0,0.5);
+    }
+    .planet.child {
+      width: 90px; height: 90px;
+      background: radial-gradient(circle at 30% 30%, #fff, #f2ce89 40%, #876840 80%);
+      box-shadow: 0 0 40px rgba(242, 206, 137, 0.3), inset -10px -10px 20px rgba(0,0,0,0.5);
+    }
+    .planet.me {
+      width: 110px; height: 110px;
+      background: radial-gradient(circle at 30% 30%, #e2f0f4, #8aa3a9 40%, #3e4e52 80%);
+      box-shadow: 0 0 50px rgba(138, 163, 169, 0.3), inset -12px -12px 25px rgba(0,0,0,0.5);
+    }
+    .planet.dad {
+      width: 120px; height: 120px;
+      background: radial-gradient(circle at 30% 30%, #e0e0e0, #9c928b 40%, #4a4441 80%);
+      box-shadow: 0 0 40px rgba(156, 146, 139, 0.3), inset -12px -12px 25px rgba(0,0,0,0.5);
+    }
+    /* 记忆节点（小星球/卫星） */
+    .memory-node {
+      width: 24px; height: 24px; border-radius: 50%; position: absolute;
+      background: radial-gradient(circle at 30% 30%, #fff, var(--glow-gold));
+      box-shadow: 0 0 15px var(--glow-gold); cursor: pointer; z-index: 3;
+      transform: translate(-50%, -50%); transition: 0.3s;
+    }
+    .memory-node:hover { transform: translate(-50%, -50%) scale(1.5); box-shadow: 0 0 25px #fff; }
+    .memory-node.coral { background: radial-gradient(circle at 30% 30%, #fff, var(--glow-coral)); box-shadow: 0 0 15px var(--glow-coral); }
+    
+    .orbit-ring {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      border: 1px dashed rgba(255,255,255,0.1); border-radius: 50%; pointer-events: none;
+    }
+
+    /* 共鸣之桥（发光节点） */
+    .resonance-spark {
+      width: 40px; height: 40px; position: absolute; transform: translate(-50%, -50%);
+      background: radial-gradient(circle, #fff, rgba(242, 206, 137, 0.8) 40%, transparent 70%);
+      box-shadow: 0 0 40px var(--glow-gold); border-radius: 50%; cursor: pointer; z-index: 5;
+      animation: pulse 2s infinite alternate;
+    }
+    .resonance-spark::after {
+      content: "共鸣点"; position: absolute; top: 45px; left: 50%; transform: translateX(-50%);
+      font-size: 12px; color: var(--glow-gold); letter-spacing: 0.1em; white-space: nowrap;
+    }
+    @keyframes pulse { from { transform: translate(-50%, -50%) scale(0.8); opacity: 0.7; } to { transform: translate(-50%, -50%) scale(1.2); opacity: 1; } }
+
+    /* --- 侧边/浮动详情卡片 (替代了原来的直接铺展) --- */
+    .detail-panel {
+      position: absolute; right: -420px; top: 20px; bottom: 20px; width: 400px;
+      background: var(--panel-bg); backdrop-filter: blur(24px);
+      border-left: 1px solid rgba(253,246,235,0.1); border-radius: 24px 0 0 24px;
+      padding: 40px; transition: right 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+      z-index: 20; overflow-y: auto; box-shadow: -10px 0 40px rgba(0,0,0,0.3);
+    }
+    .detail-panel.open { right: 0; }
+    .close-btn {
+      position: absolute; top: 24px; right: 24px; background: rgba(255,255,255,0.1);
+      border: none; color: #fff; width: 32px; height: 32px; border-radius: 50%;
+      cursor: pointer; transition: 0.3s;
+    }
+    .close-btn:hover { background: rgba(255,255,255,0.2); transform: rotate(90deg); }
+
+    /* 面板内部排版 */
+    .panel-content h3 { font-size: 24px; color: #fff3e3; margin-bottom: 16px; line-height: 1.3; }
+    .panel-content p { color: var(--muted); line-height: 1.8; margin-bottom: 20px; font-size: 15px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+    .tag { font-size: 12px; color: #dfb278; border: 1px solid rgba(223, 178, 120, .3); border-radius: 8px; padding: 4px 10px; background: rgba(223, 178, 120, .05); }
+
+    input, textarea {
+      width: 100%; border: 1px solid rgba(253,246,235,0.1); background: rgba(0,0,0,0.2);
+      color: var(--text); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;
+      font-family: inherit; font-size: 14px; outline: none; transition: 0.3s;
+    }
+    input:focus, textarea:focus { border-color: var(--glow-coral); }
+    textarea { min-height: 120px; resize: vertical; }
+    
+    button.primary {
+      width: 100%; border: 0; border-radius: 12px; padding: 14px 24px;
+      color: #312320; background: linear-gradient(135deg, #f9dfad, #e59276);
+      font-weight: 600; cursor: pointer; box-shadow: 0 8px 20px rgba(229, 146, 118, .2);
+      transition: all .25s ease; font-size: 15px; letter-spacing: 0.05em;
+    }
+    button.primary:hover { transform: translateY(-2px); box-shadow: 0 12px 25px rgba(229, 146, 118, .3); }
+
+    /* UI 引导提示文本（悬浮在空间中央底部） */
+    .space-hint {
+      position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+      font-family: var(--font-heading); font-size: 20px; color: var(--text);
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5); pointer-events: none; text-align: center;
+      animation: float 4s ease-in-out infinite;
+    }
+    .space-hint span { display: block; font-size: 13px; font-family: var(--font-body); color: var(--muted); margin-top: 8px; letter-spacing: 0.1em; }
+    @keyframes float { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -8px); } }
+
+  </style>
+</head>
+<body>
+  <div class="stars"></div>
+  
+  <div class="app">
+    <aside>
+      <div class="brand">
+        <div class="logo"></div>
+        <div><h1>家书星球</h1><p>宇宙里的家庭相册</p></div>
+      </div>
+      <button class="nav-btn active" data-screen="home">家庭星系</button>
+      <button class="nav-btn" data-screen="create">点亮新星球</button>
+      <button class="nav-btn" data-screen="memory">写下回忆 (录入)</button>
+      <button class="nav-btn" data-screen="planet">妈妈的时光机 (漫游)</button>
+      <button class="nav-btn" data-screen="resonance">星系共鸣</button>
+    </aside>
+
+    <main>
+      <!-- 1. 首页：家庭星系概览 -->
+      <section class="screen active" id="home">
+        <div class="space-canvas">
+          <svg class="space-links">
+            <line x1="50%" y1="50%" x2="30%" y2="30%" />
+            <line x1="50%" y1="50%" x2="70%" y2="35%" />
+            <line x1="50%" y1="50%" x2="40%" y2="70%" />
+          </svg>
+          
+          <div class="planet me" style="top:50%; left:50%" onclick="openPanel('me-detail')">
+            <div class="planet-label">我的星球</div>
+          </div>
+          <div class="planet mom" style="top:30%; left:30%" onclick="openPanel('mom-detail')">
+            <div class="planet-label">妈妈的时光机</div>
+          </div>
+          <div class="planet dad" style="top:35%; left:70%" onclick="openPanel('dad-detail')">
+            <div class="planet-label">老爸的岁月</div>
+          </div>
+          <div class="planet child" style="top:70%; left:40%" onclick="openPanel('child-detail')">
+            <div class="planet-label">宝贝的星轨</div>
+          </div>
+
+          <div class="space-hint">
+            每个人都是一颗独一无二的星球
+            <span>点击星球，翻阅那些被收藏的光阴</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 点亮星球：创建页，从黑暗中点亮 -->
+      <section class="screen" id="create">
+        <div class="space-canvas">
+          <div class="planet mom" id="new-planet" style="top:50%; left:40%; opacity:0.2; transform: translate(-50%, -50%) scale(0.8); filter: grayscale(1);">
+            <div class="planet-label" id="new-planet-label">等待命名...</div>
+          </div>
+          <div class="detail-panel open" style="right:0;">
+            <div class="panel-content">
+              <h3>点亮一颗新星球</h3>
+              <p>为你想记录的人创建一个专属的宇宙空间。</p>
+              <input type="text" id="planet-name-input" placeholder="给星球起个名字，如：妈妈的时光机" oninput="updatePlanetPreview(this.value)" />
+              <input type="text" placeholder="你与 TA 的羁绊 (如：母子)" />
+              <textarea placeholder="写在首页的寄语..."></textarea>
+              <button class="primary" onclick="lightUpPlanet()">赋予光芒并创建</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. 写下回忆：记忆碎片漂浮 -->
+      <section class="screen" id="memory">
+        <div class="space-canvas">
+          <div class="planet mom" style="top:50%; left:30%;">
+            <div class="planet-label">妈妈的时光机</div>
+          </div>
+          <!-- 悬浮的记忆碎片 -->
+          <div class="memory-node coral" style="top:40%; left:60%; animation: float 3s infinite;"></div>
+          
+          <div class="detail-panel open">
+            <div class="panel-content">
+              <h3>倾倒记忆碎片</h3>
+              <p>输入几句心里话，或丢入一张老照片，它将化作围绕星球运转的星辰。</p>
+              <input type="text" placeholder="回忆的主题 (如：2018除夕)" />
+              <textarea placeholder="想起了什么？或者上传照片交由 AI 识别..."></textarea>
+              <button class="primary" onclick="alert('AI 正在将碎片凝结成发光的记忆节点...'); go('planet')">化作星辰</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. 星球漫游：轨道与记忆节点 -->
+      <section class="screen" id="planet">
+        <div class="space-canvas">
+          <!-- 轨道 -->
+          <div class="orbit-ring" style="width: 300px; height: 300px;"></div>
+          <div class="orbit-ring" style="width: 500px; height: 500px; border-color: rgba(229, 146, 118, 0.2);"></div>
+          
+          <!-- 主星球 -->
+          <div class="planet mom" style="top:50%; left:50%;">
+            <div class="planet-label">妈妈的时光机</div>
+          </div>
+
+          <!-- 记忆节点（点击触发卡片） -->
+          <div class="memory-node" style="top:25%; left:50%;" onclick="openPanel('memory-1')"></div>
+          <div class="memory-node coral" style="top:65%; left:30%;" onclick="openPanel('memory-2')"></div>
+          <div class="memory-node" style="top:70%; left:70%;" onclick="openPanel('memory-3')"></div>
+          <div class="memory-node coral" style="top:50%; left:12%; box-shadow: 0 0 30px var(--glow-coral);" onclick="openPanel('memory-new')"></div>
+
+          <div class="space-hint">
+            星球漫游
+            <span>悬浮的光点，是她岁月里闪闪发光的故事</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 5. 星系共鸣：两颗星球的链接 -->
+      <section class="screen" id="resonance">
+        <div class="space-canvas">
+          <!-- 连接两条星球的发光线 -->
+          <svg class="space-links">
+            <path d="M 30% 50% Q 50% 40% 70% 50%" />
+          </svg>
+          
+          <div class="planet mom" style="top:50%; left:30%;">
+            <div class="planet-label">妈妈的时光机</div>
+          </div>
+          <div class="planet me" style="top:50%; left:70%;">
+            <div class="planet-label">我的星球</div>
+          </div>
+
+          <!-- 共鸣发光点 -->
+          <div class="resonance-spark" style="top:45%; left:50%;" onclick="openPanel('resonance-detail')"></div>
+
+          <div class="space-hint" style="bottom: 80px;">
+            星系共鸣
+            <span>AI 发现了你们之间不约而同的牵挂。点击光芒查看。</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- --- 所有的侧边详情面板容器 --- -->
+      
+      <!-- 漫游时的记忆卡片 -->
+      <div class="detail-panel" id="panel-memory-new">
+        <button class="close-btn" onclick="closePanels()">×</button>
+        <div class="panel-content">
+          <div class="tags"><span class="tag">2018 除夕</span><span class="tag">全家福</span></div>
+          <h3>新家里的第一个除夕</h3>
+          <p>那年我们第一次搬进新家过除夕。妈妈在厨房忙了一整天，最后在客厅拍了一张合照。妈妈笑着说：“以后每年除夕，我们都要这样整整齐齐地拍一张全家福。”</p>
+          <hr style="border:0; border-top:1px dashed rgba(255,255,255,0.1); margin: 20px 0;">
+          <p style="color: var(--glow-coral);"><strong>AI 星空信使：</strong><br/>我发现这段记忆与【你的星球】里的一条记录产生了强烈共鸣，它们似乎在讲述同一个温暖的时刻。</p>
+          <button class="primary" onclick="go('resonance'); closePanels();">前往查看共鸣</button>
+        </div>
+      </div>
+
+      <!-- 共鸣详情卡片 -->
+      <div class="detail-panel" id="panel-resonance-detail" style="width: 450px;">
+        <button class="close-btn" onclick="closePanels()">×</button>
+        <div class="panel-content">
+          <h3 style="text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px; margin-bottom: 24px;">视角的重逢</h3>
+          
+          <div style="margin-bottom: 24px;">
+            <span style="color: var(--glow-coral); font-size: 13px;">来自：妈妈的讲述</span>
+            <p style="background: rgba(229, 146, 118, 0.1); padding: 16px; border-radius: 12px; font-style: italic; margin-top: 8px;">“看着孩子们围坐在桌前开心吃喝的样子，觉得一天的劳累都值了，心里特别踏实。”</p>
+          </div>
+
+          <div style="margin-bottom: 32px;">
+            <span style="color: var(--glow-blue); font-size: 13px;">来自：你的日记</span>
+            <p style="background: rgba(138, 163, 169, 0.1); padding: 16px; border-radius: 12px; font-style: italic; margin-top: 8px;">“妈妈端出最后盘饺子，那是我们在新城市真正扎根的一刻。”</p>
+          </div>
+
+          <p style="text-align: center;">要将这两份牵挂，交织成一页共同的【家书】吗？</p>
+          <button class="primary" onclick="alert('已生成精美的共鸣家书长图/画册！')">融合为家书</button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    const screens = document.querySelectorAll('.screen');
+    const navBtns = document.querySelectorAll('.nav-btn');
+    const panels = document.querySelectorAll('.detail-panel');
+
+    // 屏幕切换逻辑
+    function go(id) {
+      screens.forEach(s => s.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+      
+      navBtns.forEach(b => {
+        b.classList.toggle('active', b.dataset.screen === id);
+      });
+      
+      closePanels();
+    }
+
+    navBtns.forEach(btn => btn.addEventListener('click', () => go(btn.dataset.screen)));
+
+    // 面板开关逻辑
+    function openPanel(panelId) {
+      closePanels();
+      // 根据 ID 匹配特定的面板，这里做个简单映射演示
+      let targetPanel;
+      if(panelId === 'memory-new') targetPanel = document.getElementById('panel-memory-new');
+      else if(panelId === 'resonance-detail') targetPanel = document.getElementById('panel-resonance-detail');
+      
+      if(targetPanel) {
+        targetPanel.classList.add('open');
+      } else {
+        // 如果没有特定面板，弹出一个通用的模拟面板
+        alert("展开 " + panelId + " 的详情画卷...");
+      }
+    }
+
+    function closePanels() {
+      panels.forEach(p => p.classList.remove('open'));
+    }
+
+    // 创建星球的动态效果
+    function updatePlanetPreview(val) {
+      const label = document.getElementById('new-planet-label');
+      const planet = document.getElementById('new-planet');
+      label.textContent = val || '等待命名...';
+      
+      if(val.length > 0) {
+        planet.style.opacity = '0.6';
+        planet.style.filter = 'grayscale(0.5)';
+      } else {
+        planet.style.opacity = '0.2';
+        planet.style.filter = 'grayscale(1)';
+      }
+    }
+
+    function lightUpPlanet() {
+      const planet = document.getElementById('new-planet');
+      planet.style.opacity = '1';
+      planet.style.filter = 'grayscale(0)';
+      planet.style.transform = 'translate(-50%, -50%) scale(1)';
+      planet.style.boxShadow = '0 0 80px rgba(229, 146, 118, 0.8), inset -16px -16px 30px rgba(0,0,0,0.5)';
+      
+      setTimeout(() => {
+        go('memory');
+      }, 1500);
+    }
+  </script>
+</body>
+</html>

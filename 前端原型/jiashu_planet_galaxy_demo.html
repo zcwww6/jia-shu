@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>家书星球 - 星球宇宙交互 Demo</title>
+  <style>
+    :root{
+      --night:#130e22; --deep:#21132e; --plum:#3c2144; --warm:#ffd486; --sun:#ffb66e; --rose:#ff9b8a; --blue:#91d8ee; --mint:#a7e1c4;
+      --paper:#fff7e8; --paper2:#f6e7cf; --ink:#392920; --muted:#d9c7b9; --line:rgba(255,247,232,.18);
+      --glass:rgba(255,247,232,.1); --glass2:rgba(255,247,232,.16); --shadow:0 28px 80px rgba(12,6,20,.45);
+      --ease:cubic-bezier(.2,.75,.25,1);
+    }
+    *{box-sizing:border-box} html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--paper);background:var(--night);overflow:hidden}
+    body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 20% 20%,rgba(255,180,118,.18),transparent 28%),radial-gradient(circle at 72% 12%,rgba(145,216,238,.15),transparent 28%),radial-gradient(circle at 50% 90%,rgba(255,155,138,.14),transparent 32%),linear-gradient(180deg,#120c20,#241633 55%,#130e22);z-index:-3}
+    .stars,.stars:before,.stars:after{content:"";position:fixed;inset:-80px;pointer-events:none;background-image:radial-gradient(#fff7e8 .8px,transparent 1px),radial-gradient(#ffd486 .9px,transparent 1.2px),radial-gradient(#91d8ee .7px,transparent 1px);background-size:120px 120px,190px 190px,260px 260px;background-position:0 0,60px 80px,130px 40px;opacity:.45;animation:drift 90s linear infinite;z-index:-2}.stars:before{opacity:.28;animation-duration:130s}.stars:after{opacity:.18;animation-duration:170s}@keyframes drift{to{transform:translate3d(-80px,-160px,0)}}
+    .app{height:100vh;position:relative;display:grid;grid-template-columns:1fr;isolation:isolate}.top{position:absolute;z-index:10;left:22px;right:22px;top:18px;display:flex;align-items:center;justify-content:space-between;gap:14px;pointer-events:none}.brand,.mode{pointer-events:auto;display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--line);background:rgba(25,14,35,.52);backdrop-filter:blur(18px);border-radius:999px;box-shadow:0 14px 35px rgba(0,0,0,.2)}
+    .brand-mark{width:38px;height:38px;border-radius:50%;background:radial-gradient(circle at 32% 28%,#fffbe3,#ffd486 18%,#ff9b8a 48%,#5b3373 74%);box-shadow:0 0 28px rgba(255,212,134,.62);position:relative}.brand-mark:after{content:"";position:absolute;width:52px;height:13px;border:1px solid rgba(255,247,232,.55);border-radius:50%;left:-7px;top:13px;transform:rotate(-24deg)}
+    .brand h1{font-size:18px;margin:0}.brand p{margin:1px 0 0;color:var(--muted);font-size:12px}.mode button{padding:10px 15px;border-radius:999px;border:0;background:rgba(255,247,232,.1);color:var(--paper);font-weight:800;cursor:pointer}.mode button.active{background:linear-gradient(135deg,var(--warm),var(--rose));color:#301b18}.mode .big{font-size:17px;padding:13px 20px}
+    .hint{position:absolute;z-index:9;left:50%;top:92px;transform:translateX(-50%);max-width:min(760px,calc(100vw - 40px));text-align:center;padding:12px 18px;border-radius:999px;border:1px solid var(--line);background:rgba(25,14,35,.44);backdrop-filter:blur(16px);color:#f8ead8;box-shadow:0 12px 38px rgba(0,0,0,.2)}.hint strong{color:var(--warm)}
+    .universe{position:absolute;inset:0;transform-origin:center;transition:transform .75s var(--ease),filter .45s var(--ease)}.universe.roaming{transform:scale(1.16) translate(-2%,2%)}.orbit-line{position:absolute;border:1px solid rgba(255,247,232,.13);border-radius:50%;animation:spin 70s linear infinite}.orbit-line.o1{width:520px;height:520px;left:calc(50% - 260px);top:calc(50% - 260px)}.orbit-line.o2{width:850px;height:470px;left:calc(50% - 425px);top:calc(50% - 235px);transform:rotate(-18deg);animation-duration:95s}.orbit-line.o3{width:1050px;height:720px;left:calc(50% - 525px);top:calc(50% - 360px);transform:rotate(15deg);animation-duration:120s}@keyframes spin{to{rotate:360deg}}
+    svg.links{position:absolute;inset:0;width:100%;height:100%;z-index:1;overflow:visible}.link{stroke:rgba(255,212,134,.42);stroke-width:2;fill:none;stroke-dasharray:6 12;filter:drop-shadow(0 0 7px rgba(255,212,134,.45));animation:dash 9s linear infinite}.link.strong{stroke:rgba(145,216,238,.62);stroke-width:3}.link.family{stroke:rgba(167,225,196,.52)}@keyframes dash{to{stroke-dashoffset:-180}}
+    .node{position:absolute;z-index:3;width:180px;height:180px;border:0;background:transparent;padding:0;cursor:pointer;transform:translate(-50%,-50%);transition:transform .3s var(--ease),filter .3s var(--ease)}.node:focus-visible{outline:3px solid var(--warm);border-radius:50%}.node:hover{transform:translate(-50%,-50%) scale(1.08)}.planet{position:absolute;inset:18px;border-radius:50%;box-shadow:0 0 48px rgba(255,212,134,.42),inset -22px -26px 34px rgba(30,16,40,.5);animation:float 5s ease-in-out infinite}.node:nth-of-type(odd) .planet{animation-delay:-1.8s}.planet:after{content:"";position:absolute;width:150%;height:28%;border:1px solid rgba(255,247,232,.5);border-radius:50%;left:-25%;top:38%;transform:rotate(-22deg);box-shadow:0 0 20px rgba(255,212,134,.15)}.planet:before{content:"";position:absolute;inset:18%;border-radius:50%;background:radial-gradient(circle at 30% 25%,rgba(255,255,255,.6),transparent 22%);opacity:.7}@keyframes float{50%{translate:0 -10px}}
+    .planet.mom{background:radial-gradient(circle at 34% 26%,#fff9d9,#ffd486 20%,#ff9b8a 48%,#6c3a61 76%)}.planet.me{background:radial-gradient(circle at 32% 28%,#fff,#91d8ee 18%,#7b5ac8 48%,#211744 78%)}.planet.dad{background:radial-gradient(circle at 34% 30%,#fff8df,#a7e1c4 18%,#4a9f98 48%,#1d4150 78%)}.planet.baby{background:radial-gradient(circle at 34% 27%,#fff,#ffd6a6 20%,#f6a8b8 50%,#6e4778 78%)}.planet.grandma{background:radial-gradient(circle at 34% 27%,#fff5d5,#e6bd84 22%,#9f6f62 52%,#4d2b3f 80%)}
+    .node-label{position:absolute;left:50%;top:100%;transform:translateX(-50%);white-space:nowrap;text-align:center}.node-label b{display:block;font-size:18px;text-shadow:0 2px 12px #000}.node-label span{display:inline-flex;margin-top:5px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(25,14,35,.45);color:var(--muted);font-size:12px}.glow{position:absolute;inset:2px;border-radius:50%;background:radial-gradient(circle,rgba(255,212,134,.22),transparent 65%);filter:blur(10px)}
+    #mom{left:48%;top:43%}#me{left:67%;top:35%;width:150px;height:150px}#dad{left:35%;top:64%;width:155px;height:155px}#baby{left:72%;top:67%;width:130px;height:130px}#grandma{left:24%;top:31%;width:145px;height:145px}
+    .quick{position:absolute;z-index:9;left:50%;bottom:26px;transform:translateX(-50%);display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap;width:min(920px,calc(100vw - 36px))}.quick button,.fab{border:0;border-radius:999px;padding:15px 22px;background:linear-gradient(135deg,#fff4d5,var(--warm),var(--rose));color:#321d19;font-weight:900;font-size:16px;box-shadow:0 18px 45px rgba(0,0,0,.28);cursor:pointer;transition:.22s var(--ease)}.quick button:hover,.fab:hover{transform:translateY(-3px)}.quick .secondary{background:rgba(255,247,232,.12);color:var(--paper);border:1px solid var(--line);box-shadow:none}.elder .quick button{font-size:22px;padding:19px 28px}.elder .node-label b{font-size:23px}.elder .node-label span{font-size:15px}.elder .hint{font-size:20px;border-radius:24px}.elder .brand p{display:none}
+    .panel{position:absolute;z-index:20;right:22px;top:92px;bottom:24px;width:min(430px,calc(100vw - 36px));border:1px solid rgba(255,247,232,.2);border-radius:30px;background:linear-gradient(145deg,rgba(255,247,232,.96),rgba(246,231,207,.94));color:var(--ink);box-shadow:var(--shadow);transform:translateX(calc(100% + 50px));transition:transform .45s var(--ease);overflow:hidden}.panel.open{transform:translateX(0)}.panel-head{padding:22px 22px 16px;background:linear-gradient(135deg,rgba(255,212,134,.55),rgba(255,155,138,.3));position:relative}.close{position:absolute;right:14px;top:14px;border:0;width:42px;height:42px;border-radius:50%;background:rgba(57,41,32,.1);font-size:22px;cursor:pointer}.mini-planet{width:76px;height:76px;border-radius:50%;box-shadow:0 0 28px rgba(255,180,118,.5);margin-bottom:12px}.panel h2{margin:0;font-size:28px}.panel p{line-height:1.65;color:#715d52}.panel-body{padding:18px 22px 26px;height:calc(100% - 178px);overflow:auto}.detail-card{border:1px solid rgba(90,65,45,.13);border-radius:22px;background:rgba(255,255,255,.52);padding:16px;margin-bottom:12px;box-shadow:0 10px 25px rgba(79,49,35,.08)}.detail-card h3{margin:0 0 8px}.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.chip{border:1px solid rgba(90,65,45,.14);border-radius:999px;padding:5px 10px;background:#fff8ee;color:#806458;font-size:12px}.panel-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.panel-actions button{border:0;border-radius:16px;padding:14px;background:var(--ink);color:var(--paper);font-weight:900;cursor:pointer}.panel-actions .light{background:#fff8ee;color:var(--ink);border:1px solid rgba(90,65,45,.16)}.elder .panel{width:min(520px,calc(100vw - 28px))}.elder .panel h2{font-size:34px}.elder .panel p,.elder .detail-card{font-size:19px}.elder .panel-actions{grid-template-columns:1fr}.elder .panel-actions button{font-size:22px;padding:18px}
+    .modal{position:fixed;z-index:30;inset:0;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(10,5,16,.52);backdrop-filter:blur(12px)}.modal.show{display:flex}.sheet{width:min(820px,100%);max-height:88vh;overflow:auto;border-radius:34px;background:#fff7e8;color:var(--ink);box-shadow:var(--shadow);padding:28px}.sheet h2{margin:0 0 12px;font-size:34px}.sheet .big-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}.big-tile{border:1px solid rgba(90,65,45,.14);border-radius:28px;padding:26px;text-align:center;background:#fffdf6;cursor:pointer;transition:.2s}.big-tile:hover{transform:translateY(-4px);box-shadow:0 14px 30px rgba(79,49,35,.12)}.big-tile .ico{font-size:42px}.big-tile b{display:block;margin-top:10px;font-size:20px}.soft-input{width:100%;min-height:120px;border:1px solid rgba(90,65,45,.18);border-radius:22px;background:#fffdf6;padding:18px;font:inherit;font-size:18px;color:var(--ink);outline:none}.sheet-row{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px}.sheet button{border:0;border-radius:999px;padding:14px 22px;background:var(--ink);color:#fff7e8;font-weight:900;cursor:pointer}.sheet .ghost{background:#f1dfc5;color:var(--ink)}
+    .toast{position:fixed;z-index:50;left:50%;bottom:104px;transform:translate(-50%,20px);opacity:0;transition:.25s;background:rgba(255,247,232,.94);color:var(--ink);border-radius:999px;padding:13px 18px;box-shadow:0 18px 45px rgba(0,0,0,.25);font-weight:800}.toast.show{opacity:1;transform:translate(-50%,0)}
+    @media(max-width:900px){.top{left:12px;right:12px}.brand{padding:8px 11px}.mode{padding:7px}.mode button:not(.active){display:none}.hint{top:82px;border-radius:22px;font-size:14px}.node{width:135px;height:135px}.node-label b{font-size:15px}.node-label span{font-size:11px}#mom{left:48%;top:40%}#me{left:73%;top:30%;width:118px;height:118px}#dad{left:28%;top:65%;width:122px;height:122px}#baby{left:72%;top:70%;width:106px;height:106px}#grandma{left:23%;top:27%;width:112px;height:112px}.quick{bottom:16px}.quick button{font-size:15px;padding:13px 15px}.panel{left:14px;right:14px;top:auto;bottom:14px;width:auto;height:72vh;transform:translateY(calc(100% + 40px))}.panel.open{transform:translateY(0)}.sheet .big-actions{grid-template-columns:1fr}.orbit-line.o3{display:none}}
+  </style>
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="app" id="app">
+    <header class="top">
+      <div class="brand"><div class="brand-mark"></div><div><h1>家书星球</h1><p>每个人都是一颗独一无二的星球</p></div></div>
+      <div class="mode"><button id="normalBtn" class="active" onclick="setMode(false)">青年模式</button><button id="elderBtn" onclick="setMode(true)">长辈大字</button></div>
+    </header>
+
+    <div class="hint" id="hint"><strong>点击任意星球</strong> 查看记忆；点击星轨查看关系。拖动空白处可模拟星球漫游。</div>
+
+    <main class="universe" id="universe" aria-label="家庭星球宇宙">
+      <div class="orbit-line o1"></div><div class="orbit-line o2"></div><div class="orbit-line o3"></div>
+      <svg class="links" id="links" viewBox="0 0 1000 700" preserveAspectRatio="none">
+        <path class="link strong" d="M480 300 C560 230 620 230 670 245" onclick="openRelation('mom-me')"></path>
+        <path class="link family" d="M480 300 C390 385 355 430 350 445" onclick="openRelation('mom-dad')"></path>
+        <path class="link" d="M670 245 C720 360 735 430 720 470" onclick="openRelation('me-baby')"></path>
+        <path class="link family" d="M480 300 C360 230 295 210 240 217" onclick="openRelation('mom-grandma')"></path>
+        <path class="link" d="M350 445 C520 520 650 520 720 470" onclick="openRelation('dad-baby')"></path>
+      </svg>
+
+      <button class="node" id="mom" onclick="openPlanet('mom')"><span class="glow"></span><span class="planet mom"></span><span class="node-label"><b>妈妈</b><span>12 条记忆</span></span></button>
+      <button class="node" id="me" onclick="openPlanet('me')"><span class="glow"></span><span class="planet me"></span><span class="node-label"><b>我</b><span>8 条记忆</span></span></button>
+      <button class="node" id="dad" onclick="openPlanet('dad')"><span class="glow"></span><span class="planet dad"></span><span class="node-label"><b>爸爸</b><span>6 条记忆</span></span></button>
+      <button class="node" id="baby" onclick="openPlanet('baby')"><span class="glow"></span><span class="planet baby"></span><span class="node-label"><b>宝宝</b><span>成长星球</span></span></button>
+      <button class="node" id="grandma" onclick="openPlanet('grandma')"><span class="glow"></span><span class="planet grandma"></span><span class="node-label"><b>外婆</b><span>人生星球</span></span></button>
+    </main>
+
+    <div class="quick">
+      <button onclick="lightPlanet()">点亮一颗星球</button>
+      <button class="secondary" onclick="roam()">星球漫游</button>
+      <button class="secondary" onclick="showRecord()">一键记录</button>
+      <button class="secondary" onclick="openRelation('mom-me')">星系共鸣</button>
+    </div>
+
+    <aside class="panel" id="panel" aria-live="polite">
+      <div class="panel-head">
+        <button class="close" onclick="closePanel()">×</button>
+        <div class="mini-planet" id="mini"></div>
+        <h2 id="panelTitle">妈妈的星球</h2>
+        <p id="panelSub">家庭可见 · AI 已整理 12 条记忆</p>
+      </div>
+      <div class="panel-body" id="panelBody"></div>
+    </aside>
+  </div>
+
+  <div class="modal" id="recordModal">
+    <div class="sheet">
+      <h2>记录一颗新的记忆光点</h2>
+      <p>为了让老人也能轻松使用，这里只保留三个大入口：说一段话、上传照片、让 AI 采访。</p>
+      <div class="big-actions">
+        <div class="big-tile" onclick="toast('已进入语音记录：按住说话即可')"><div class="ico">🎙️</div><b>说一段话</b><p>适合父母和祖辈</p></div>
+        <div class="big-tile" onclick="toast('已打开照片上传')"><div class="ico">📷</div><b>上传照片</b><p>照片会变成记忆光点</p></div>
+        <div class="big-tile" onclick="toast('AI 正在准备温柔采访')"><div class="ico">✨</div><b>AI 采访</b><p>一次只问一个问题</p></div>
+      </div>
+      <textarea class="soft-input">那一年除夕，我们第一次在新房里过年。妈妈说，以后每年都要整整齐齐拍一张全家福。</textarea>
+      <div class="sheet-row"><button class="ghost" onclick="hideRecord()">稍后再记</button><button onclick="saveRecord()">保存为记忆光点</button></div>
+    </div>
+  </div>
+  <div class="modal" id="bookModal">
+    <div class="sheet">
+      <h2>星系纪念册 · 新房里的第一个除夕</h2>
+      <p>2018 年除夕，一家人第一次在新房里过年。妈妈记得那天的忙碌和团圆，孩子记得那句“以后每年都要拍全家福”。两颗星球的记忆在同一晚相遇，于是这张照片变成了一个家的约定。</p>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:12px;margin:22px 0">
+        <div style="min-height:170px;border-radius:24px;background:linear-gradient(135deg,#ffd486,#ff9b8a,#91d8ee)"></div>
+        <div style="min-height:170px;border-radius:24px;background:linear-gradient(135deg,#fff1c8,#e7bfa1)"></div>
+        <div style="min-height:170px;border-radius:24px;background:linear-gradient(135deg,#a7e1c4,#91d8ee)"></div>
+      </div>
+      <p><b>来源：</b>妈妈星球的语音记忆、我的星球的照片记忆。发布前需要家庭成员确认。</p>
+      <div class="sheet-row"><button class="ghost" onclick="hideBook()">关闭</button><button onclick="toast('已生成家庭分享链接')">分享给家人</button></div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const data={
+      mom:{name:'妈妈的星球',sub:'家庭可见 · AI 已整理 12 条记忆',cls:'mom',mem:['2018 年除夕：第一次在新房过年，全家拍下合照。','2020 年生日：收到孩子亲手做的卡片。','2024 年云南旅行：退休后最放松的一次旅行。'],tags:['春节','家庭合照','人生故事','团圆']},
+      me:{name:'我的星球',sub:'私密为主 · 允许指定记忆参与共鸣',cls:'me',mem:['那张全家福我一直留着。','第一次离家上大学，妈妈送我到车站。','五年职业成长复盘。'],tags:['成长','职业','家庭仪式']},
+      dad:{name:'爸爸的星球',sub:'家庭可见 · 6 条记忆',cls:'dad',mem:['第一次装修新房时，他说终于有了自己的家。','云南旅行负责开车，看到家人开心就值得。'],tags:['家','旅行','陪伴']},
+      baby:{name:'宝宝的星球',sub:'父母共同管理 · 成长记录',cls:'baby',mem:['第一次叫妈妈。','一周岁生日，抓周抓到了小书。','第一次看到大海。'],tags:['成长','生日','亲子']},
+      grandma:{name:'外婆的星球',sub:'人生星球 · 祖辈口述记忆',cls:'grandma',mem:['年轻时第一次来到这座城市。','每年春节都会准备同一道菜。'],tags:['祖辈','家族味道','传承']}
+    };
+    const rel={
+      'mom-me':{title:'妈妈 × 我：星系共鸣',sub:'AI 发现 2018 年除夕两颗星球产生连接',a:'妈妈记得那天第一次在新房过年，忙了一整天后，全家在客厅拍了一张合照。',b:'我一直留着那张全家福，也记得妈妈说以后每年都要这样整整齐齐拍一张。',score:'时间 95% · 地点 88% · 人物 92% · 语义 90%'},
+      'mom-dad':{title:'妈妈 × 爸爸：夫妻星系',sub:'共同关键词：新房、春节、家',a:'妈妈记得新房里的第一顿年夜饭。',b:'爸爸记得装修新房时终于安定下来的感觉。',score:'家庭主题 86% · 地点 90%'},
+      'me-baby':{title:'我 × 宝宝：成长星轨',sub:'父母视角与孩子成长记忆相连',a:'我记录了宝宝第一次看到大海。',b:'宝宝星球里保存了那天的照片与笑声。',score:'时间 91% · 主题 93%'},
+      'mom-grandma':{title:'妈妈 × 外婆：代际星轨',sub:'节日味道和家庭传统在两代人之间延续',a:'妈妈每年春节都会做一道外婆教的菜。',b:'外婆记得年轻时第一次为家人准备年夜饭。',score:'主题 89% · 人物 86%'},
+      'dad-baby':{title:'爸爸 × 宝宝：陪伴星轨',sub:'旅行与成长瞬间互相连接',a:'爸爸记得云南旅行开了很久的车。',b:'宝宝星球记录了那次旅行里第一次看见雪山。',score:'地点 84% · 主题 88%'}
+    };
+    const panel=document.getElementById('panel'),body=document.getElementById('panelBody'),mini=document.getElementById('mini');
+    function openPlanet(id){const p=data[id];document.getElementById('panelTitle').textContent=p.name;document.getElementById('panelSub').textContent=p.sub;mini.className='mini-planet '+p.cls;mini.style.background=getComputedStyle(document.querySelector('.planet.'+p.cls)).background;body.innerHTML=`<div class="detail-card"><h3>记忆光点</h3><p>${p.mem[0]}</p><div class="chips">${p.tags.map(t=>`<span class="chip">${t}</span>`).join('')}</div></div><div class="detail-card"><h3>最近记忆</h3>${p.mem.map(m=>`<p>· ${m}</p>`).join('')}</div><div class="detail-card"><h3>AI 建议</h3><p>这颗星球还有一些空白年份。可以用语音请 TA 讲一段春节、旅行或成长故事。</p></div><div class="panel-actions"><button onclick="showRecord()">记录新记忆</button><button class="light" onclick="openRelation('mom-me')">查看共鸣</button><button class="light" onclick="showBook()">打开纪念册</button><button class="light" onclick="lightPlanet()">点亮星球</button></div>`;panel.classList.add('open')}
+    function openRelation(id){const r=rel[id];document.getElementById('panelTitle').textContent=r.title;document.getElementById('panelSub').textContent=r.sub;mini.style.background='radial-gradient(circle at 32% 28%,#fff,#ffd486 18%,#91d8ee 48%,#5b3373 76%)';body.innerHTML=`<div class="detail-card"><h3>两颗星球的连接</h3><p>${r.a}</p><hr style="border:0;border-top:1px solid rgba(90,65,45,.14)"><p>${r.b}</p></div><div class="detail-card"><h3>AI 共鸣判断</h3><p>${r.score}</p><div class="chips"><span class="chip">共同时间</span><span class="chip">共同人物</span><span class="chip">共同事件</span></div></div><div class="panel-actions"><button onclick="showBook()">生成星系纪念册</button><button class="light" onclick="toast('已放入稍后确认')">稍后确认</button><button class="light" onclick="toast('已邀请家人补充另一段记忆')">邀请补充</button></div>`;panel.classList.add('open')}
+    function closePanel(){panel.classList.remove('open')}function showRecord(){document.getElementById('recordModal').classList.add('show')}function hideRecord(){document.getElementById('recordModal').classList.remove('show')}function saveRecord(){hideRecord();toast('新的记忆光点已点亮，并等待 AI 整理')}function showBook(){document.getElementById('bookModal').classList.add('show')}function hideBook(){document.getElementById('bookModal').classList.remove('show')}function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2400)}
+    function setMode(elder){document.body.classList.toggle('elder',elder);document.getElementById('elderBtn').classList.toggle('active',elder);document.getElementById('normalBtn').classList.toggle('active',!elder);toast(elder?'已切换为长辈大字模式':'已切换为青年模式')}
+    function roam(){const u=document.getElementById('universe');u.classList.toggle('roaming');toast(u.classList.contains('roaming')?'正在星球漫游：点击星球可停靠':'已回到家庭星系总览')}
+    function lightPlanet(){const nodes=[...document.querySelectorAll('.node')];const n=nodes[Math.floor(Math.random()*nodes.length)];n.animate([{filter:'brightness(1)'},{filter:'brightness(1.8) drop-shadow(0 0 24px #ffd486)'},{filter:'brightness(1)'}],{duration:1200});toast('一颗记忆星球被点亮了')}
+    let down=false,sx=0,sy=0,tx=0,ty=0;const uni=document.getElementById('universe');uni.addEventListener('pointerdown',e=>{if(e.target.closest('.node')||e.target.closest('path'))return;down=true;sx=e.clientX;sy=e.clientY;uni.setPointerCapture(e.pointerId)});uni.addEventListener('pointermove',e=>{if(!down)return;tx+=(e.clientX-sx)*.02;ty+=(e.clientY-sy)*.02;sx=e.clientX;sy=e.clientY;uni.style.transform=`translate(${tx}px,${ty}px)`});uni.addEventListener('pointerup',()=>down=false);
+  </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"7939e04a4baf43c8b86a560f74aac60e","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>

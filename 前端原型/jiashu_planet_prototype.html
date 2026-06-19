@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>家书星球 - 前端交互原型</title>
+  <style>
+    :root {
+      --bg: #070a18;
+      --bg2: #10142a;
+      --card: rgba(255, 255, 255, 0.08);
+      --card2: rgba(255, 255, 255, 0.12);
+      --line: rgba(255, 255, 255, 0.16);
+      --text: #f7f3ff;
+      --muted: #a9b1d6;
+      --primary: #8d7cff;
+      --primary2: #4fd7ff;
+      --warm: #ffd18a;
+      --danger: #ff8aa8;
+      --success: #88f7c3;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      --radius: 24px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at 15% 20%, rgba(141, 124, 255, 0.25), transparent 32%),
+        radial-gradient(circle at 85% 15%, rgba(79, 215, 255, 0.2), transparent 28%),
+        radial-gradient(circle at 50% 85%, rgba(255, 209, 138, 0.13), transparent 34%),
+        var(--bg);
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    .stars, .stars::before, .stars::after {
+      position: fixed;
+      inset: 0;
+      content: "";
+      pointer-events: none;
+      background-image:
+        radial-gradient(#fff 0.6px, transparent 0.8px),
+        radial-gradient(#9bd8ff 0.7px, transparent 1px);
+      background-size: 110px 110px, 170px 170px;
+      background-position: 0 0, 40px 70px;
+      opacity: 0.35;
+      animation: drift 60s linear infinite;
+    }
+
+    .stars::before { opacity: 0.25; animation-duration: 90s; }
+    .stars::after { opacity: 0.18; animation-duration: 120s; }
+
+    @keyframes drift {
+      from { transform: translateY(0); }
+      to { transform: translateY(-120px); }
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      min-height: 100vh;
+    }
+
+    aside {
+      border-right: 1px solid var(--line);
+      background: rgba(7, 10, 24, 0.72);
+      backdrop-filter: blur(22px);
+      padding: 28px 20px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .logo {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #fff8d8, #ffd18a 18%, #8d7cff 52%, #121936 75%);
+      box-shadow: 0 0 26px rgba(141, 124, 255, 0.72);
+      position: relative;
+    }
+
+    .logo::after {
+      content: "";
+      position: absolute;
+      width: 54px;
+      height: 14px;
+      border: 1px solid rgba(255,255,255,.46);
+      border-radius: 50%;
+      transform: rotate(-24deg);
+      left: -7px;
+      top: 14px;
+    }
+
+    .brand h1 { font-size: 18px; margin: 0; }
+    .brand p { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+
+    .nav-title {
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      margin: 22px 12px 10px;
+    }
+
+    .nav-btn {
+      width: 100%;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 16px;
+      padding: 12px 14px;
+      text-align: left;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: 0.2s ease;
+      font-size: 14px;
+    }
+
+    .nav-btn:hover, .nav-btn.active {
+      background: rgba(141, 124, 255, 0.16);
+      border-color: rgba(141, 124, 255, 0.35);
+      color: var(--text);
+    }
+
+    .small-pill {
+      font-size: 11px;
+      color: var(--primary2);
+      border: 1px solid rgba(79, 215, 255, .28);
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+
+    main { padding: 30px; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+
+    .breadcrumb { color: var(--muted); font-size: 14px; }
+
+    .user-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.06);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), var(--primary2));
+    }
+
+    .screen { display: none; animation: fade .28s ease; }
+    .screen.active { display: block; }
+
+    @keyframes fade {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero {
+      min-height: calc(100vh - 90px);
+      display: grid;
+      grid-template-columns: 1.04fr 0.96fr;
+      gap: 32px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      color: var(--primary2);
+      letter-spacing: .16em;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      font-size: clamp(34px, 6vw, 74px);
+      line-height: 1.02;
+      margin: 0 0 18px;
+      letter-spacing: -0.04em;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.75;
+      max-width: 680px;
+      margin-bottom: 28px;
+    }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+
+    button, .button {
+      border: 0;
+      border-radius: 16px;
+      padding: 12px 18px;
+      color: #0b1020;
+      background: linear-gradient(135deg, #fff0bd, #8d7cff 55%, #4fd7ff);
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 14px 30px rgba(141, 124, 255, .24);
+      transition: transform .18s ease, filter .18s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button:hover, .button:hover { transform: translateY(-2px); filter: brightness(1.06); }
+
+    .ghost {
+      color: var(--text);
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+      box-shadow: none;
+    }
+
+    .danger { background: rgba(255,138,168,.13); color: var(--danger); border: 1px solid rgba(255,138,168,.28); box-shadow: none; }
+    .success { background: rgba(136,247,195,.13); color: var(--success); border: 1px solid rgba(136,247,195,.28); box-shadow: none; }
+
+    .cosmos-card, .card {
+      border: 1px solid var(--line);
+      background: linear-gradient(145deg, rgba(255,255,255,.11), rgba(255,255,255,.045));
+      backdrop-filter: blur(18px);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .cosmos-card {
+      min-height: 520px;
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+    }
+
+    .orbit {
+      position: absolute;
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 50%;
+      animation: spin 18s linear infinite;
+    }
+
+    .orbit.one { width: 330px; height: 330px; }
+    .orbit.two { width: 460px; height: 240px; transform: rotate(-24deg); animation-duration: 26s; }
+    .orbit.three { width: 560px; height: 380px; transform: rotate(18deg); animation-duration: 34s; }
+
+    @keyframes spin { to { rotate: 360deg; } }
+
+    .planet-large {
+      width: 170px;
+      height: 170px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 32% 28%, #fff, #ffd18a 13%, #8d7cff 42%, #18204a 72%);
+      box-shadow: 0 0 62px rgba(141, 124, 255, .72), inset -20px -18px 34px rgba(0,0,0,.28);
+      position: relative;
+    }
+
+    .planet-large::after {
+      content: "";
+      position: absolute;
+      width: 238px;
+      height: 42px;
+      border: 1px solid rgba(255,255,255,.34);
+      border-radius: 50%;
+      left: -34px;
+      top: 64px;
+      transform: rotate(-21deg);
+    }
+
+    .memory-dot {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--primary2);
+      box-shadow: 0 0 18px var(--primary2);
+    }
+    .d1 { top: 120px; left: 120px; }
+    .d2 { top: 110px; right: 150px; background: var(--warm); box-shadow: 0 0 18px var(--warm); }
+    .d3 { bottom: 115px; left: 180px; background: var(--primary); box-shadow: 0 0 18px var(--primary); }
+    .d4 { bottom: 155px; right: 90px; }
+
+    .grid { display: grid; gap: 18px; }
+    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card { padding: 22px; }
+    .card h3 { margin: 0 0 10px; font-size: 20px; }
+    .card p { color: var(--muted); line-height: 1.7; margin: 0; }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .section-title h2 { font-size: 34px; margin: 0; }
+    .section-title p { color: var(--muted); margin: 8px 0 0; }
+
+    .option {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.065);
+      border-radius: 20px;
+      padding: 20px;
+      cursor: pointer;
+      min-height: 136px;
+      transition: .2s ease;
+    }
+    .option:hover, .option.selected {
+      border-color: rgba(79, 215, 255, .58);
+      background: rgba(79, 215, 255, .09);
+      transform: translateY(-2px);
+    }
+    .option .icon { font-size: 28px; margin-bottom: 12px; }
+    .option strong { display:block; margin-bottom: 8px; }
+    .option span { color: var(--muted); font-size: 14px; line-height: 1.5; }
+
+    label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,.18);
+      color: var(--text);
+      border-radius: 16px;
+      padding: 13px 14px;
+      outline: none;
+      font: inherit;
+    }
+    textarea { min-height: 130px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { border-color: rgba(79,215,255,.65); }
+
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+
+    .upload-zone {
+      border: 1px dashed rgba(255,255,255,.28);
+      border-radius: 22px;
+      padding: 28px;
+      text-align: center;
+      background: rgba(255,255,255,.045);
+      color: var(--muted);
+    }
+
+    .timeline { position: relative; padding-left: 24px; }
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: 12px;
+      bottom: 12px;
+      width: 2px;
+      background: linear-gradient(var(--primary2), var(--primary), transparent);
+    }
+    .timeline-item { position: relative; margin-bottom: 16px; }
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -22px;
+      top: 18px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--primary2);
+      box-shadow: 0 0 18px var(--primary2);
+    }
+
+    .memory-card {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.065);
+      border-radius: 20px;
+      padding: 18px;
+    }
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .tag {
+      font-size: 12px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: rgba(255,255,255,.05);
+    }
+
+    .chat { display: grid; grid-template-columns: 1.2fr .8fr; gap: 18px; }
+    .chat-box {
+      height: 520px;
+      overflow: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .bubble {
+      max-width: 82%;
+      padding: 14px 16px;
+      border-radius: 18px;
+      line-height: 1.6;
+      font-size: 15px;
+    }
+    .ai { background: rgba(141,124,255,.16); border: 1px solid rgba(141,124,255,.26); align-self: flex-start; }
+    .me { background: rgba(79,215,255,.13); border: 1px solid rgba(79,215,255,.28); align-self: flex-end; }
+
+    .draft-list { display: grid; gap: 12px; }
+    .draft-item { padding: 14px; border-radius: 16px; background: rgba(255,255,255,.06); border: 1px solid var(--line); }
+    .draft-item small { color: var(--muted); }
+
+    .resonance {
+      display: grid;
+      grid-template-columns: 1fr 130px 1fr;
+      align-items: center;
+      gap: 16px;
+    }
+    .person-card { min-height: 300px; }
+    .beam {
+      height: 4px;
+      background: linear-gradient(90deg, var(--primary), var(--primary2), var(--warm));
+      border-radius: 999px;
+      box-shadow: 0 0 28px rgba(79,215,255,.75);
+      position: relative;
+    }
+    .beam::before {
+      content: "星系共鸣";
+      position: absolute;
+      left: 50%;
+      top: -42px;
+      transform: translateX(-50%);
+      color: var(--primary2);
+      white-space: nowrap;
+      font-weight: 800;
+    }
+
+    .book {
+      background: #f8efe2;
+      color: #362b24;
+      border-radius: 20px;
+      padding: 34px;
+      box-shadow: 0 24px 70px rgba(0,0,0,.35);
+    }
+    .book h3 { font-size: 34px; margin: 0 0 10px; color: #201a17; }
+    .book p { color: #5f5147; line-height: 1.9; }
+    .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 20px 0; }
+    .photo {
+      aspect-ratio: 1.2;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #d7c2ff, #ffe4a8, #9be8ff);
+    }
+
+    .toast {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      background: rgba(12,18,42,.88);
+      border: 1px solid rgba(79,215,255,.34);
+      color: var(--text);
+      border-radius: 18px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(18px);
+      transition: .25s ease;
+      z-index: 10;
+      max-width: 330px;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .mobile-top { display: none; }
+
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      aside { display: none; }
+      main { padding: 18px; }
+      .mobile-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        padding: 12px 0 18px;
+        backdrop-filter: blur(12px);
+      }
+      .hero, .grid.two, .grid.three, .grid.four, .chat, .resonance, .form-row { grid-template-columns: 1fr; }
+      .cosmos-card { min-height: 360px; }
+      .topbar { display: none; }
+      h2 { font-size: 42px; }
+      .beam { height: 70px; width: 4px; justify-self: center; }
+      .beam::before { top: 22px; left: 18px; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="stars"></div>
+  <div class="app">
+    <aside>
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>家书星球</h1>
+          <p>AI 家庭记忆宇宙</p>
+        </div>
+      </div>
+      <div class="nav-title">核心流程</div>
+      <button class="nav-btn active" data-screen="home">首页 <span class="small-pill">Start</span></button>
+      <button class="nav-btn" data-screen="onboarding">新手引导</button>
+      <button class="nav-btn" data-screen="create">创建星球</button>
+      <button class="nav-btn" data-screen="memory">记忆录入</button>
+      <button class="nav-btn" data-screen="interview">AI 采访</button>
+      <button class="nav-btn" data-screen="planet">个人星球</button>
+      <button class="nav-btn" data-screen="resonance">星系共鸣</button>
+      <button class="nav-btn" data-screen="book">纪念册预览</button>
+      <div class="nav-title">辅助页面</div>
+      <button class="nav-btn" data-screen="privacy">隐私设置</button>
+      <button class="nav-btn" data-screen="flow">交互逻辑</button>
+    </aside>
+
+    <main>
+      <div class="mobile-top">
+        <div class="brand"><div class="logo"></div><div><h1>家书星球</h1><p>原型</p></div></div>
+        <select id="mobileNav">
+          <option value="home">首页</option>
+          <option value="onboarding">新手引导</option>
+          <option value="create">创建星球</option>
+          <option value="memory">记忆录入</option>
+          <option value="interview">AI 采访</option>
+          <option value="planet">个人星球</option>
+          <option value="resonance">星系共鸣</option>
+          <option value="book">纪念册预览</option>
+          <option value="privacy">隐私设置</option>
+          <option value="flow">交互逻辑</option>
+        </select>
+      </div>
+
+      <div class="topbar">
+        <div class="breadcrumb" id="breadcrumb">首页 / 创建第一颗星球</div>
+        <div class="user-chip"><div class="avatar"></div> Charles 的家庭宇宙</div>
+      </div>
+
+      <section class="screen active" id="home">
+        <div class="hero">
+          <div>
+            <div class="eyebrow">AI NATIVE FAMILY MEMORY</div>
+            <h2>每个人都是一颗星球</h2>
+            <p class="lead">用 AI 采访、整理和连接家庭记忆。把散落在照片、语音和文字里的故事，汇聚成属于一个家的星系纪念册。</p>
+            <div class="actions">
+              <button onclick="go('onboarding')">创建我的第一颗星球 →</button>
+              <button class="ghost" onclick="go('flow')">查看交互逻辑</button>
+            </div>
+          </div>
+          <div class="cosmos-card">
+            <div class="orbit one"></div>
+            <div class="orbit two"></div>
+            <div class="orbit three"></div>
+            <div class="planet-large"></div>
+            <div class="memory-dot d1"></div>
+            <div class="memory-dot d2"></div>
+            <div class="memory-dot d3"></div>
+            <div class="memory-dot d4"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="onboarding">
+        <div class="section-title">
+          <div><h2>新手引导</h2><p>首次使用只问三个问题，让用户快速进入第一条记忆。</p></div>
+        </div>
+        <div class="grid three">
+          <div class="card">
+            <h3>1. 你想先记录谁？</h3>
+            <div class="grid" style="margin-top:14px">
+              <div class="option selected"><div class="icon">🌕</div><strong>我自己</strong><span>创建个人成长星球</span></div>
+              <div class="option"><div class="icon">👶</div><strong>孩子</strong><span>记录成长里程碑</span></div>
+              <div class="option"><div class="icon">👵</div><strong>父母 / 祖辈</strong><span>开启温柔语音采访</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>2. 你想记录什么？</h3>
+            <div class="grid" style="margin-top:14px">
+              <div class="option selected"><div class="icon">📷</div><strong>一组照片</strong><span>AI 提取时间、人物与事件</span></div>
+              <div class="option"><div class="icon">🎙️</div><strong>一段语音</strong><span>边说边生成记忆卡</span></div>
+              <div class="option"><div class="icon">🎂</div><strong>一个纪念日</strong><span>生成纪念册章节</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>3. 你希望 AI 怎么帮你？</h3>
+            <div class="grid" style="margin-top:14px">
+              <div class="option selected"><div class="icon">✨</div><strong>发现共同记忆</strong><span>识别家人之间的星系共鸣</span></div>
+              <div class="option"><div class="icon">📝</div><strong>采访我</strong><span>用追问补全细节</span></div>
+              <div class="option"><div class="icon">📖</div><strong>生成纪念册</strong><span>把记忆排成一本书</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="actions" style="margin-top:20px"><button onclick="go('create')">下一步：创建星球</button></div>
+      </section>
+
+      <section class="screen" id="create">
+        <div class="section-title">
+          <div><h2>创建星球</h2><p>星球代表一个被记录的人，不一定等于登录账号。</p></div>
+        </div>
+        <div class="grid two">
+          <div class="card">
+            <div class="form-row">
+              <div><label>星球名称</label><input value="妈妈的星球" /></div>
+              <div><label>星球类型</label><select><option>父母星球</option><option>孩子星球</option><option>个人星球</option><option>伴侣星球</option></select></div>
+            </div>
+            <div class="form-row">
+              <div><label>你与 TA 的关系</label><input value="母女 / 母子" /></div>
+              <div><label>默认隐私</label><select><option>仅自己可见</option><option>家庭可见</option><option>特定成员可见</option></select></div>
+            </div>
+            <label>星球简介</label>
+            <textarea>想为妈妈记录她的人生故事，也把我们一起经历过的重要时刻整理成一本家庭纪念册。</textarea>
+            <div class="actions" style="margin-top:16px"><button onclick="go('memory')">创建并录入第一条记忆</button><button class="ghost" onclick="toast('已保存为草稿')">保存草稿</button></div>
+          </div>
+          <div class="cosmos-card">
+            <div class="planet-large" style="width:145px;height:145px"></div>
+            <div class="card" style="position:absolute;bottom:22px;left:22px;right:22px;box-shadow:none">
+              <h3>妈妈的星球</h3>
+              <p>类型：父母星球 · 记忆数：0 · 隐私：仅自己可见</p>
+              <div class="tags"><span class="tag">温柔采访</span><span class="tag">人生故事</span><span class="tag">家庭星系</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="memory">
+        <div class="section-title">
+          <div><h2>记忆录入</h2><p>支持文字、语音、照片三种低门槛输入。MVP 暂不做复杂视频处理。</p></div>
+        </div>
+        <div class="grid two">
+          <div class="card">
+            <div class="form-row">
+              <div><label>记忆标题</label><input value="2018 年除夕夜" /></div>
+              <div><label>发生时间</label><input value="2018-02-15" /></div>
+            </div>
+            <label>文字 / 语音转写内容</label>
+            <textarea>那一年我们第一次在新房里过除夕。妈妈忙了一整天，最后全家人在客厅拍了一张合照。现在想起来，那张照片里每个人都笑得很开心。</textarea>
+            <div class="upload-zone" style="margin-top:14px">拖拽或点击上传照片 / 语音<br/>示例：全家福.jpg、妈妈采访.m4a</div>
+            <div class="actions" style="margin-top:16px"><button onclick="toast('AI 正在抽取时间、地点、人物和情绪'); setTimeout(()=>go('interview'), 700)">让 AI 整理这段记忆</button></div>
+          </div>
+          <div class="card">
+            <h3>AI 结构化预览</h3>
+            <div class="draft-list" style="margin-top:16px">
+              <div class="draft-item"><small>时间</small><br/>2018 年除夕夜</div>
+              <div class="draft-item"><small>地点</small><br/>新房客厅</div>
+              <div class="draft-item"><small>人物</small><br/>妈妈、爸爸、孩子、家人</div>
+              <div class="draft-item"><small>事件</small><br/>第一次在新房过除夕，全家拍合照</div>
+              <div class="draft-item"><small>情绪</small><br/>团圆、开心、怀念</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="interview">
+        <div class="section-title">
+          <div><h2>AI 采访</h2><p>AI 不只是总结，而是温柔追问，帮助补全记忆细节。</p></div>
+        </div>
+        <div class="chat">
+          <div class="card chat-box" id="chatBox">
+            <div class="bubble ai">我看到你提到了“2018 年除夕夜”。那天对你来说最特别的地方是什么？</div>
+            <div class="bubble me">那是我们第一次在新房过年，我觉得像是一个新的开始。</div>
+            <div class="bubble ai">这个“新的开始”很重要。你还记得当时妈妈说过什么，或者做过什么让你印象很深吗？</div>
+          </div>
+          <div class="card">
+            <h3>实时记忆草稿</h3>
+            <div class="draft-list" style="margin:16px 0">
+              <div class="draft-item"><small>故事标题</small><br/>新房里的第一个除夕</div>
+              <div class="draft-item"><small>核心情绪</small><br/>团圆、安定、重新开始</div>
+              <div class="draft-item"><small>AI 建议追问</small><br/>妈妈当天说过的话、照片里的具体人物、这件事对家庭的意义</div>
+            </div>
+            <label>你的回答</label>
+            <textarea id="answerInput" placeholder="可以打字，也可以语音输入">妈妈说：以后每年都要这样整整齐齐地拍一张全家福。</textarea>
+            <div class="actions" style="margin-top:14px"><button onclick="addAnswer()">发送回答</button><button class="ghost" onclick="go('planet')">确认入库</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="planet">
+        <div class="section-title">
+          <div><h2>个人星球</h2><p>个人时间轴 + 主题星云 + AI 建议，是用户持续沉淀的主空间。</p></div>
+          <button onclick="go('resonance')">查看星系共鸣 →</button>
+        </div>
+        <div class="grid two">
+          <div class="card">
+            <h3>妈妈的星球</h3>
+            <p>记忆 12 条 · 时间跨度 1986—2026 · 隐私：家庭可见</p>
+            <div class="tags"><span class="tag">人生故事</span><span class="tag">春节</span><span class="tag">家庭合照</span><span class="tag">新房</span></div>
+            <div class="timeline" style="margin-top:24px">
+              <div class="timeline-item"><div class="memory-card"><strong>2018 年除夕夜</strong><p>第一次在新房里过年，全家人在客厅拍下合照。</p><div class="tags"><span class="tag">团圆</span><span class="tag">共同记忆候选</span></div></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>2020 年妈妈生日</strong><p>孩子第一次亲手做了生日卡片。</p><div class="tags"><span class="tag">生日</span><span class="tag">感动</span></div></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>2024 年家庭旅行</strong><p>全家去了云南，妈妈说这是退休后最放松的一次旅行。</p><div class="tags"><span class="tag">旅行</span><span class="tag">家庭星云</span></div></div></div>
+            </div>
+          </div>
+          <div class="grid">
+            <div class="card">
+              <h3>主题星云</h3>
+              <div class="tags"><span class="tag">春节 4 条</span><span class="tag">旅行 3 条</span><span class="tag">生日 2 条</span><span class="tag">家 5 条</span></div>
+            </div>
+            <div class="card">
+              <h3>AI 建议</h3>
+              <p>你多次提到“新房”和“全家福”。AI 发现这可能与另一颗星球中的照片记忆有关，建议查看星系共鸣。</p>
+              <div class="actions" style="margin-top:16px"><button onclick="go('resonance')">查看可能的共同记忆</button></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="resonance">
+        <div class="section-title">
+          <div><h2>星系共鸣</h2><p>这是产品的 Aha Moment：AI 发现两颗星球之间的共同记忆。</p></div>
+        </div>
+        <div class="resonance">
+          <div class="card person-card">
+            <h3>妈妈的记忆</h3>
+            <p>“2018 年第一次在新房过年，妈妈忙了一整天，最后全家人在客厅拍了一张合照。”</p>
+            <div class="tags"><span class="tag">2018 除夕</span><span class="tag">新房客厅</span><span class="tag">全家福</span></div>
+          </div>
+          <div class="beam"></div>
+          <div class="card person-card">
+            <h3>孩子的记忆</h3>
+            <p>“那张全家福我一直留着。妈妈当时说，以后每年都要这样整整齐齐地拍一张照片。”</p>
+            <div class="tags"><span class="tag">同一照片</span><span class="tag">妈妈</span><span class="tag">家庭仪式</span></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:18px">
+          <h3>AI 判断</h3>
+          <p>这两条记忆在时间、地点、人物和语义上高度重合，可能属于同一个家庭事件。是否合并为“2018 年除夕星系故事”？</p>
+          <div class="tags"><span class="tag">时间匹配 95%</span><span class="tag">地点匹配 88%</span><span class="tag">人物匹配 92%</span><span class="tag">语义匹配 90%</span></div>
+          <div class="actions" style="margin-top:16px"><button onclick="go('book')">确认合并并生成纪念册</button><button class="ghost" onclick="toast('已放入可能相关列表')">稍后再看</button><button class="danger" onclick="toast('已标记为不是同一件事')">不是同一件事</button></div>
+        </div>
+      </section>
+
+      <section class="screen" id="book">
+        <div class="section-title">
+          <div><h2>纪念册预览</h2><p>最终交付物：可分享网页、PDF，后续可扩展实体印刷。</p></div>
+          <div class="actions"><button onclick="toast('已生成分享链接')">分享给家人</button><button class="ghost" onclick="toast('PDF 导出为 P1 功能，此处为原型演示')">导出 PDF</button></div>
+        </div>
+        <div class="book">
+          <p>家书星球 · 双人星系纪念册</p>
+          <h3>新房里的第一个除夕</h3>
+          <p>2018 年除夕，一家人第一次在新房里过年。那天妈妈忙了一整天，客厅里摆满了饭菜和笑声。晚饭后，全家人在客厅拍下了一张合照。</p>
+          <div class="photo-grid"><div class="photo"></div><div class="photo"></div><div class="photo"></div></div>
+          <p>对妈妈来说，那是一个安定下来的时刻；对孩子来说，那张照片成为多年后仍被珍藏的家庭仪式。妈妈说：“以后每年都要这样整整齐齐地拍一张全家福。”这句话让一张照片变成了一个家的约定。</p>
+          <hr style="border:0;border-top:1px solid #d8c9b8;margin:24px 0" />
+          <p><strong>记忆来源：</strong>妈妈的语音采访、孩子上传的全家福、AI 结构化记忆卡。所有内容发布前均可编辑和确认。</p>
+        </div>
+      </section>
+
+      <section class="screen" id="privacy">
+        <div class="section-title">
+          <div><h2>隐私与授权</h2><p>家庭记忆默认私密，共同记忆必须双向授权。</p></div>
+        </div>
+        <div class="grid two">
+          <div class="card">
+            <h3>星球可见范围</h3>
+            <div class="draft-list" style="margin-top:16px">
+              <div class="draft-item"><small>妈妈的星球</small><br/>家庭可见 · 允许 AI 整理 · 允许交集识别</div>
+              <div class="draft-item"><small>我的星球</small><br/>仅自己可见 · 允许指定记忆参与交集</div>
+              <div class="draft-item"><small>宝宝的星球</small><br/>仅父母可见 · 不公开分享</div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>关键规则</h3>
+            <p>1. AI 生成必须基于已确认记忆。<br/>2. 共同记忆识别需要双方允许。<br/>3. 分享纪念册前必须二次确认。<br/>4. 用户可随时关闭 AI 处理、导出数据或删除星球。</p>
+            <div class="actions" style="margin-top:16px"><button class="success" onclick="toast('隐私设置已保存')">保存设置</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen" id="flow">
+        <div class="section-title">
+          <div><h2>页面交互逻辑</h2><p>从首访到纪念册生成的完整前端状态流。</p></div>
+        </div>
+        <div class="grid two">
+          <div class="card">
+            <h3>核心路径</h3>
+            <div class="timeline" style="margin-top:16px">
+              <div class="timeline-item"><div class="memory-card"><strong>首页</strong><p>解释价值，点击“创建第一颗星球”。</p></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>新手引导</strong><p>选择记录对象、记忆类型和 AI 帮助方式。</p></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>创建星球</strong><p>写入星球基础信息和隐私默认值。</p></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>记忆录入</strong><p>输入文字、语音或图片，生成待确认记忆卡。</p></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>AI 采访</strong><p>通过追问补全时间、人物、情绪和事件意义。</p></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>个人星球</strong><p>沉淀到时间轴，并触发共同记忆候选。</p></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>星系共鸣</strong><p>用户确认是否合并两条共同记忆。</p></div></div>
+              <div class="timeline-item"><div class="memory-card"><strong>纪念册</strong><p>生成可分享、可编辑、可导出的最终成果。</p></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>前端状态设计</h3>
+            <p>原型使用简单的 screen 状态切换；正式开发可映射为 Next.js 路由。</p>
+            <div class="draft-list" style="margin-top:16px">
+              <div class="draft-item"><small>/</small><br/>首页 Landing</div>
+              <div class="draft-item"><small>/onboarding</small><br/>新手引导，生成初始偏好</div>
+              <div class="draft-item"><small>/planets/new</small><br/>创建星球</div>
+              <div class="draft-item"><small>/memories/new</small><br/>记忆录入与上传</div>
+              <div class="draft-item"><small>/interview/:sessionId</small><br/>AI 采访会话</div>
+              <div class="draft-item"><small>/planets/:planetId</small><br/>个人星球时间轴</div>
+              <div class="draft-item"><small>/resonance/:id</small><br/>共同记忆确认</div>
+              <div class="draft-item"><small>/books/:bookId</small><br/>纪念册预览与分享</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const screens = document.querySelectorAll('.screen');
+    const navBtns = document.querySelectorAll('.nav-btn');
+    const breadcrumb = document.getElementById('breadcrumb');
+    const mobileNav = document.getElementById('mobileNav');
+    const labels = {
+      home: '首页 / 创建第一颗星球',
+      onboarding: '新手引导 / 选择记录对象',
+      create: '创建星球 / 基础信息',
+      memory: '记忆录入 / 文字语音照片',
+      interview: 'AI 采访 / 追问补全',
+      planet: '个人星球 / 时间轴',
+      resonance: '星系共鸣 / 共同记忆确认',
+      book: '纪念册 / 预览分享',
+      privacy: '隐私设置 / 授权管理',
+      flow: '交互逻辑 / 页面状态流'
+    };
+
+    function go(id) {
+      screens.forEach(s => s.classList.toggle('active', s.id === id));
+      navBtns.forEach(b => b.classList.toggle('active', b.dataset.screen === id));
+      breadcrumb.textContent = labels[id] || id;
+      mobileNav.value = id;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    navBtns.forEach(btn => btn.addEventListener('click', () => go(btn.dataset.screen)));
+    mobileNav.addEventListener('change', e => go(e.target.value));
+
+    document.querySelectorAll('.option').forEach(option => {
+      option.addEventListener('click', () => {
+        const parent = option.parentElement;
+        parent.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+      });
+    });
+
+    function toast(text) {
+      const el = document.getElementById('toast');
+      el.textContent = text;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2400);
+    }
+
+    function addAnswer() {
+      const input = document.getElementById('answerInput');
+      const chatBox = document.getElementById('chatBox');
+      if (!input.value.trim()) return;
+      const me = document.createElement('div');
+      me.className = 'bubble me';
+      me.textContent = input.value;
+      chatBox.appendChild(me);
+      const ai = document.createElement('div');
+      ai.className = 'bubble ai';
+      ai.textContent = '我已经把这句话加入记忆草稿。它让这段记忆从“一张照片”变成了一个家庭仪式。是否确认保存到妈妈的星球？';
+      setTimeout(() => {
+        chatBox.appendChild(ai);
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }, 360);
+      input.value = '';
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  </script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"7939e04a4baf43c8b86a560f74aac60e","server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
