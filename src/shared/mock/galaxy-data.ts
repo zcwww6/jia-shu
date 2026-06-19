@@ -1,0 +1,224 @@
+import type {
+  BookDraft,
+  GalaxyZone,
+  MemoryStar,
+  Planet,
+  ResonanceTrack,
+  StoryNode,
+} from "@/shared/types/galaxy";
+
+export const galaxyZones: GalaxyZone[] = [
+  {
+    key: "galaxy",
+    label: "我的星系",
+    href: "/galaxy",
+    description: "家庭星球、推荐航线和当前演示路径。",
+  },
+  {
+    key: "privacy",
+    label: "隐私星域",
+    href: "/settings/privacy",
+    description: "私密核心、家庭可见和公开分享边界。",
+  },
+  {
+    key: "memorial",
+    label: "纪念星域",
+    href: "/galaxy?zone=memorial",
+    description: "纪念星、传承星云和克制叙事。",
+  },
+  {
+    key: "workshop",
+    label: "星球工坊",
+    href: "/planet/mock-mom?panel=theme",
+    description: "星球材质、星环和个人主题。",
+  },
+  {
+    key: "memories",
+    label: "记忆星群",
+    href: "/memory/new",
+    description: "点亮记忆星并确认 AI 整理结果。",
+  },
+  {
+    key: "resonance",
+    label: "共鸣星轨",
+    href: "/resonance",
+    description: "共同记忆候选、来源对比和匹配理由。",
+  },
+  {
+    key: "themes",
+    label: "主题星云",
+    href: "/themes",
+    description: "家庭团圆、亲子成长、旅行和伴侣主题。",
+  },
+  {
+    key: "books",
+    label: "家书工坊",
+    href: "/books/new",
+    description: "选择来源范围并生成一页家书。",
+  },
+];
+
+export const planets: Planet[] = [
+  {
+    id: "mock-me",
+    name: "我的星球",
+    type: "self",
+    role: "私密核心",
+    visibility: "private",
+    theme: "极光家书",
+    position: { x: 48, y: 52 },
+    stats: { memoryStars: 116, resonanceTracks: 2, bookDrafts: 4 },
+    summary: "你自己的记忆核心，分享和共鸣前都需要再次确认。",
+  },
+  {
+    id: "mock-mom",
+    name: "妈妈的星球",
+    type: "parent",
+    role: "家庭可见",
+    visibility: "family",
+    theme: "暖橘星环",
+    position: { x: 34, y: 38 },
+    stats: { memoryStars: 32, resonanceTracks: 1, bookDrafts: 3 },
+    summary: "一颗可漫游的家庭星球，连接春节、旅行和外婆的菜谱。",
+  },
+  {
+    id: "mock-child",
+    name: "孩子的成长星球",
+    type: "child",
+    role: "成长轨道",
+    visibility: "family",
+    theme: "金色里程碑",
+    position: { x: 63, y: 42 },
+    stats: { memoryStars: 21, resonanceTracks: 1, bookDrafts: 1 },
+    summary: "收藏第一次、作品、生日和未来信。",
+  },
+  {
+    id: "mock-grandma",
+    name: "外婆的纪念星",
+    type: "memorial",
+    role: "纪念星域",
+    visibility: "family",
+    theme: "柔紫纪念光",
+    position: { x: 72, y: 68 },
+    stats: { memoryStars: 8, resonanceTracks: 2, bookDrafts: 1 },
+    summary: "以克制语气保存来源、时间和家人寄语。",
+  },
+  {
+    id: "mock-travel",
+    name: "公开旅行星",
+    type: "public",
+    role: "公开分享",
+    visibility: "public",
+    theme: "山风星册",
+    position: { x: 78, y: 30 },
+    stats: { memoryStars: 12, resonanceTracks: 1, bookDrafts: 1 },
+    summary: "只展示主动选择分享的旅行章节。",
+  },
+];
+
+export const memoryStars: MemoryStar[] = [
+  {
+    id: "memory-2018-mom",
+    planetId: "mock-mom",
+    title: "新家里的第一个除夕",
+    occurredAt: "2018 年除夕",
+    location: "新房客厅",
+    people: ["妈妈", "我", "孩子", "全家人"],
+    emotions: ["团圆", "安定", "疲惫后的踏实"],
+    visibility: "family",
+    summary: "妈妈忙了一整天，最后在客厅拍下全家福。",
+  },
+  {
+    id: "memory-2018-me",
+    planetId: "mock-me",
+    title: "扎根新城市的一刻",
+    occurredAt: "2018 年除夕",
+    location: "新房客厅",
+    people: ["妈妈", "我", "孩子"],
+    emotions: ["安心", "感激"],
+    visibility: "family",
+    summary: "妈妈端出最后一盘饺子，那一刻像是真正安了家。",
+  },
+  {
+    id: "memory-2024-travel",
+    planetId: "mock-travel",
+    title: "云南阳光",
+    occurredAt: "2024 年春天",
+    location: "云南",
+    people: ["妈妈", "爸爸", "孩子"],
+    emotions: ["放松", "明亮"],
+    visibility: "public",
+    summary: "一次适合生成旅行星云家书的家庭旅程。",
+  },
+];
+
+export const storyNodes: StoryNode[] = [
+  {
+    id: "story-mom-1968",
+    planetId: "mock-mom",
+    year: "1968",
+    title: "她的起点",
+    summary: "年轻时的妈妈像一颗刚形成的暖橘星。",
+    sourceLabel: "来源：人生采访",
+  },
+  {
+    id: "story-mom-1998",
+    planetId: "mock-mom",
+    year: "1998",
+    title: "成为母亲",
+    summary: "家庭轨道开始围绕她的日常旋转。",
+    sourceLabel: "情绪：责任、温柔",
+  },
+  {
+    id: "story-mom-2018",
+    planetId: "mock-mom",
+    year: "2018",
+    title: "新家除夕",
+    summary: "忙了一整天后，全家福让这一天发光。",
+    sourceLabel: "已连接：我的星球",
+  },
+  {
+    id: "story-mom-2024",
+    planetId: "mock-mom",
+    year: "2024",
+    title: "云南阳光",
+    summary: "退休后最放松的一次旅行，她记得阳光。",
+    sourceLabel: "可进入：旅行星云",
+  },
+];
+
+export const resonanceTracks: ResonanceTrack[] = [
+  {
+    id: "resonance-2018-reunion",
+    title: "2018 除夕共鸣星轨",
+    sourceMemoryIds: ["memory-2018-mom", "memory-2018-me"],
+    score: 0.91,
+    status: "candidate",
+    reason: "时间、地点、人物和语义高度匹配，适合带入家书工坊。",
+  },
+];
+
+export const bookDrafts: BookDraft[] = [
+  {
+    id: "book-2018-reunion",
+    title: "我们家的第一个新房除夕",
+    sourceRange: "binary_system",
+    themeTemplateKey: "family_reunion",
+    sourceMemoryIds: ["memory-2018-mom", "memory-2018-me"],
+    intro: "这页家书从妈妈和我的星球中选取已确认记忆，讲述同一个家庭时刻在不同人心里留下的光。",
+    chapters: [
+      {
+        title: "两颗星球记住同一天",
+        sourceMemoryIds: ["memory-2018-mom", "memory-2018-me"],
+      },
+      {
+        title: "妈妈的视角",
+        sourceMemoryIds: ["memory-2018-mom"],
+      },
+      {
+        title: "我的视角",
+        sourceMemoryIds: ["memory-2018-me"],
+      },
+    ],
+  },
+];
