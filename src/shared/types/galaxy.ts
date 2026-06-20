@@ -18,6 +18,23 @@ export type PlanetType =
   | "public"
   | "partner";
 
+export type PlanetLinkKind =
+  | "family"
+  | "resonance"
+  | "inheritance"
+  | "privacy"
+  | "public"
+  | "custom";
+
+export type PlanetLinkStatus = "candidate" | "confirmed" | "hidden";
+
+export type PlanetLinkRule =
+  | "manual"
+  | "sharedMemory"
+  | "relationship"
+  | "aiCandidate"
+  | "theme";
+
 export interface GalaxyZone {
   key: GalaxyZoneKey;
   label: string;
@@ -42,6 +59,18 @@ export interface Planet {
     bookDrafts: number;
   };
   summary: string;
+}
+
+export interface PlanetLink {
+  id: string;
+  sourcePlanetId: string;
+  targetPlanetId: string;
+  kind: PlanetLinkKind;
+  status: PlanetLinkStatus;
+  label: string;
+  visibility: Visibility;
+  strength: number;
+  rule: PlanetLinkRule;
 }
 
 export interface MemoryStar {
