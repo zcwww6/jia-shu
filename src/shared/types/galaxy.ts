@@ -115,3 +115,69 @@ export interface BookDraft {
     sourceMemoryIds: string[];
   }>;
 }
+
+export interface MemoryExtractRequest {
+  planetId: string;
+  visibility: Visibility;
+  content: string;
+}
+
+export interface MemoryExtractSuggestion {
+  title: string;
+  occurredAt: string;
+  location: string;
+  people: string[];
+  emotions: string[];
+  summary: string;
+  uncertainFields: string[];
+}
+
+export interface MemoryExtractResponse {
+  memory: MemoryStar;
+  suggestion: MemoryExtractSuggestion;
+  sourceText: string;
+  status: "needs_confirmation" | "confirmed";
+}
+
+export interface ResonanceScoreBreakdown {
+  time: number;
+  people: number;
+  location: number;
+  semantic: number;
+}
+
+export interface ResonanceScanRequest {
+  memoryId: string;
+}
+
+export interface ResonanceScanResponse {
+  candidate: ResonanceTrack;
+  comparedMemories: MemoryStar[];
+  breakdown: ResonanceScoreBreakdown;
+  requiresConfirmation: boolean;
+}
+
+export interface BookGenerateRequest {
+  sourceMemoryIds: string[];
+  sourceRange: BookDraft["sourceRange"];
+  themeTemplateKey: string;
+}
+
+export interface GeneratedBookSection {
+  title: string;
+  body: string;
+  sourceMemoryIds: string[];
+}
+
+export interface BookGenerateResponse {
+  draft: BookDraft;
+  body: string;
+  sections: GeneratedBookSection[];
+  status: "draft" | "ready_to_share";
+}
+
+export interface ShareConfirmationPayload {
+  showBody: boolean;
+  showSourceTitles: boolean;
+  showOriginalText: boolean;
+}
