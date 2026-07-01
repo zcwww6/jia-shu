@@ -2985,6 +2985,65 @@ body {
     backdrop-filter: blur(22px);
   }
 
+  .book-sections {
+    margin-top: 16px;
+    display: grid;
+    gap: 12px;
+  }
+
+  .book-section {
+    padding: 14px 16px;
+    background: rgba(253, 247, 236, 0.05);
+    border: 1px solid rgba(253, 247, 236, 0.1);
+    border-radius: 16px;
+  }
+
+  .book-section strong {
+    color: #fff4df;
+    font-size: 15px;
+  }
+
+  .book-section p {
+    margin-top: 6px;
+    color: rgba(253, 247, 236, 0.78);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .book-source {
+    display: block;
+    margin-top: 8px;
+    color: rgba(253, 247, 236, 0.5);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+  }
+
+  .share-link-card {
+    margin-top: 14px;
+  }
+
+  .share-link-card .share-link-url {
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.32);
+    border: 1px solid rgba(253, 247, 236, 0.12);
+    border-radius: 12px;
+    color: rgba(253, 247, 236, 0.82);
+    font-size: 12px;
+    word-break: break-all;
+  }
+
+  .share-link-card .big-actions {
+    margin-top: 12px;
+  }
+
+  .share-link-card a.primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+  }
+
   .panel-kicker {
     color: var(--gold);
     font-size: 12px;

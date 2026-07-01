@@ -181,3 +181,24 @@ export interface ShareConfirmationPayload {
   showSourceTitles: boolean;
   showOriginalText: boolean;
 }
+
+export interface PublishBookRequest {
+  draft: BookDraft;
+  body: string;
+  sections: GeneratedBookSection[];
+  share: ShareConfirmationPayload;
+}
+
+export interface PublishBookResponse {
+  token: string;
+  url: string;
+}
+
+export interface StoredSharedBook {
+  token: string;
+  draft: BookDraft;
+  body: string;
+  sections: GeneratedBookSection[];
+  share: ShareConfirmationPayload;
+  createdAt: string;
+}

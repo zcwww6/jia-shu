@@ -32,7 +32,36 @@ import {
   resonanceTracks,
   storyNodes,
 } from "@/shared/mock/galaxy-data";
-import type { GalaxyZoneKey, Planet, PlanetLink, PlanetLinkKind } from "@/shared/types/galaxy";
+import { demoSession } from "@/shared/mock/demo-session";
+import type {
+  BookGenerateResponse,
+  GalaxyZoneKey,
+  MemoryExtractResponse,
+  MemoryStar,
+  Planet,
+  PlanetLink,
+  PlanetLinkKind,
+  ResonanceScanResponse,
+} from "@/shared/types/galaxy";
+
+import {
+  appendLitMemory,
+  readGalaxyBookResult,
+  readGalaxyExtractResult,
+  readGalaxyResonanceResult,
+  readLitMemories,
+  writeGalaxyBookResult,
+  writeGalaxyExtractResult,
+  writeGalaxyResonanceResult,
+  writeGalaxySharePayload,
+} from "@/features/demo-loop/storage";
+import {
+  extractMemory,
+  generateBook,
+  publishBook,
+  scanResonance,
+  useLoopApi,
+} from "./use-loop-api";
 
 interface GalaxyView {
   panX: number;
@@ -279,6 +308,23 @@ export function GalaxyWorkspace() {
   const [starMapEditorOpen, setStarMapEditorOpen] = useState(false);
   const dragStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
 
+  // 星系内闭环真实数据（接 /api/*），初值从 localStorage 读取以支持刷新存活。
+  const [quickRecordContent, setQuickRecordContent] = useState(
+    "2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。",
+  );
+  const [extractResult, setExtractResult] = useState<MemoryExtractResponse | null>(
+    () => readGalaxyExtractResult(),
+  );
+  const [resonanceResult, setResonanceResult] = useState<ResonanceScanResponse | null>(
+    () => readGalaxyResonanceResult(),
+  );
+  const [bookResult, setBookResult] = useState<BookGenerateResponse | null>(
+    () => readGalaxyBookResult(),
+  );
+  const [litMemories, setLitMemories] = useState<MemoryStar[]>(() => readLitMemories());
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const loopApi = useLoopApi();
+
   const activeZoneContent = zoneContent[activeZone];
   const visiblePlanets = useMemo(
     () => galaxyPlanets.filter((planet) => !hiddenPlanetIds.includes(planet.id)),
@@ -385,12 +431,98 @@ export function GalaxyWorkspace() {
     setToast(`已带入「${theme}」`);
   }
 
-  function lightMemoryStar() {
+  async function lightMemoryStar() {
+    const content = quickRecordContent.trim();
+    if (content.length === 0) {
+      setToast("先写下一句话，再点亮记忆星");
+      return;
+    }
+
+    const result = await loopApi.run(() =>
+      extractMemory({
+        planetId: demoSession.defaultPlanetId,
+        visibility: "family",
+        content,
+      }),
+    );
+
+    if (!result) {
+      setToast(loopApi.error ?? "AI 整理失败，请稍后重试");
+      return;
+    }
+
+    setExtractResult(result);
+    writeGalaxyExtractResult(result);
+    setLitMemories(appendLitMemory(result.memory));
+
     setActivePanel("memory1");
     setActiveZone("memories");
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
     setToast("已点亮为记忆星，默认不公开");
+  }
+
+  async function scanResonanceStar() {
+    const memoryId = extractResult?.memory.id ?? memoryStars[0].id;
+    const result = await loopApi.run(() => scanResonance(memoryId));
+    if (!result) {
+      setToast(loopApi.error ?? "共鸣扫描失败，请稍后重试");
+      return false;
+    }
+    setResonanceResult(result);
+    writeGalaxyResonanceResult(result);
+    return true;
+  }
+
+  async function generateBookDraft() {
+    // 乐观反馈：先标记已生成，再用真实响应丰富内容（失败时回落静态草稿）。
+    setBookGenerated(true);
+    const sourceMemoryIds =
+      resonanceResult?.candidate.sourceMemoryIds ?? bookDrafts[0].sourceMemoryIds;
+    const result = await loopApi.run(() =>
+      generateBook({
+        sourceMemoryIds,
+        sourceRange: "binary_system",
+        themeTemplateKey: "family_reunion",
+      }),
+    );
+    if (!result) {
+      setToast(loopApi.error ?? "家书生成失败，请稍后重试");
+      return false;
+    }
+    setBookResult(result);
+    writeGalaxyBookResult(result);
+    return true;
+  }
+
+  async function confirmShare() {
+    const share = {
+      showBody: true,
+      showSourceTitles: true,
+      showOriginalText: false,
+    };
+    writeGalaxySharePayload(share);
+
+    // 没有已生成的家书时，仅确认分享范围（演示降级路径），不发布链接。
+    if (!bookResult) {
+      setToast("分享范围已确认");
+      return;
+    }
+
+    const published = await loopApi.run(() =>
+      publishBook({
+        draft: bookResult.draft,
+        body: bookResult.body,
+        sections: bookResult.sections,
+        share,
+      }),
+    );
+    if (!published) {
+      setToast(loopApi.error ?? "家书发布失败，请稍后重试");
+      return;
+    }
+    setShareUrl(published.url);
+    setToast("分享链接已生成，可复制打开");
   }
 
   function selectPlanet(planetId: string) {
@@ -811,9 +943,10 @@ export function GalaxyWorkspace() {
             <ZoneScene
               activeZone={activeZone}
               bookGenerated={bookGenerated}
+              bookResult={bookResult}
+              litMemories={litMemories}
               onGenerateBook={() => {
-                setBookGenerated(true);
-                setToast("家书草稿已写入预览");
+                void generateBookDraft();
               }}
               onGo={goToZone}
               onOpenPanel={openPanel}
@@ -883,9 +1016,20 @@ export function GalaxyWorkspace() {
       <AnimatePresence>
         <SidePanel
           activePanel={activePanel}
+          extractResult={extractResult}
+          resonanceResult={resonanceResult}
+          bookResult={bookResult}
+          quickRecordContent={quickRecordContent}
+          loading={loopApi.loading}
           onClose={() => setActivePanel(null)}
           onGo={goToZone}
           onLightMemory={lightMemoryStar}
+          onQuickRecordChange={setQuickRecordContent}
+          onScanResonance={scanResonanceStar}
+          onConfirmShare={() => {
+            void confirmShare();
+          }}
+          shareUrl={shareUrl}
           onOpenPanel={openPanel}
           onSelectTheme={selectThemeFromNebula}
           onToast={setToast}
@@ -953,6 +1097,8 @@ export function GalaxyWorkspace() {
 function ZoneScene({
   activeZone,
   bookGenerated,
+  bookResult,
+  litMemories,
   closingPlanetId,
   onGenerateBook,
   onGo,
@@ -981,6 +1127,8 @@ function ZoneScene({
 }: {
   activeZone: GalaxyZoneKey;
   bookGenerated: boolean;
+  bookResult: BookGenerateResponse | null;
+  litMemories: MemoryStar[];
   closingPlanetId: string | null;
   onGenerateBook: () => void;
   onGo: (zone: GalaxyZoneKey) => void;
@@ -1167,6 +1315,16 @@ function ZoneScene({
         <MemoryButton label="生日卡片" left="31%" onClick={() => onOpenPanel("memory2")} top="63%" />
         <MemoryButton label="云南旅行" left="68%" onClick={() => onOpenPanel("memory3")} top="66%" variant="blue" />
         <MemoryButton label="外婆的菜谱" left="18%" onClick={() => onOpenPanel("memory4")} top="47%" variant="ancestor-light" />
+        {litMemories.map((memory, index) => (
+          <MemoryButton
+            key={memory.id}
+            label={memory.title}
+            left={`${42 + index * 8}%`}
+            onClick={() => onOpenPanel("memory1")}
+            top={`${78 - index * 6}%`}
+            variant="coral"
+          />
+        ))}
         <SparkButton label="共鸣星轨正在生成" left="76%" onClick={() => onGo("resonance")} top="34%" />
         <SceneHint
           subtitle="点击光点查看故事；新的记忆会自然进入轨道"
@@ -1246,6 +1404,9 @@ function ZoneScene({
   }
 
   if (activeZone === "books") {
+    const bookTitle = bookResult?.draft.title ?? bookDrafts[0].title;
+    const bookIntro = bookResult?.draft.intro ?? bookDrafts[0].intro;
+    const bookSourceIds = bookResult?.draft.sourceMemoryIds ?? bookDrafts[0].sourceMemoryIds;
     return (
       <div className="bookmaker-stage">
         <section className="book-workbench">
@@ -1259,7 +1420,7 @@ function ZoneScene({
             </div>
             <div className="source-card">
               <strong>保留 sourceMemoryIds</strong>
-              <p>{bookDrafts[0].sourceMemoryIds.join(" / ")}</p>
+              <p>{bookSourceIds.join(" / ")}</p>
             </div>
           </div>
           <div className="book-actions">
@@ -1272,9 +1433,20 @@ function ZoneScene({
           </div>
         </section>
         <article className="book-preview">
-          <p>{bookGenerated ? "家书草稿已生成" : "等待生成"}</p>
-          <h3>{bookDrafts[0].title}</h3>
-          <span>{bookDrafts[0].intro}</span>
+          <p>{bookGenerated || bookResult ? "家书草稿已生成" : "等待生成"}</p>
+          <h3>{bookTitle}</h3>
+          <span>{bookIntro}</span>
+          {bookResult ? (
+            <div className="book-sections">
+              {bookResult.sections.map((section) => (
+                <div className="book-section" key={section.title}>
+                  <strong>{section.title}</strong>
+                  <p>{section.body}</p>
+                  <span className="book-source">来源：{section.sourceMemoryIds.join(" / ")}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </article>
         <SceneHint
           subtitle="只基于已确认记忆生成；公开分享前必须确认范围"
@@ -1879,24 +2051,44 @@ function ViewControls({
 
 function SidePanel({
   activePanel,
+  extractResult,
+  resonanceResult,
+  bookResult,
+  quickRecordContent,
+  loading,
+  shareUrl,
   onClose,
   onGo,
   onLightMemory,
+  onQuickRecordChange,
+  onScanResonance,
+  onConfirmShare,
   onOpenPanel,
   onSelectTheme,
   onToast,
 }: {
   activePanel: PanelKey | null;
+  extractResult: MemoryExtractResponse | null;
+  resonanceResult: ResonanceScanResponse | null;
+  bookResult: BookGenerateResponse | null;
+  quickRecordContent: string;
+  loading: boolean;
+  shareUrl: string | null;
   onClose: () => void;
   onGo: (zone: GalaxyZoneKey) => void;
   onLightMemory: () => void;
+  onQuickRecordChange: (value: string) => void;
+  onScanResonance: () => Promise<boolean>;
+  onConfirmShare: () => void;
   onOpenPanel: (key: PanelKey) => void;
   onSelectTheme: (theme: string) => void;
   onToast: (message: string) => void;
 }) {
-  const memory = memoryStars[0];
-  const track = resonanceTracks[0];
-  const book = bookDrafts[0];
+  // live-or-fallback：有真实响应时用真实数据，否则回落静态 mock，保证旧测试断言成立。
+  const liveMemory = extractResult?.memory ?? memoryStars[0];
+  const memory = liveMemory;
+  const track = resonanceResult?.candidate ?? resonanceTracks[0];
+  const book = bookResult?.draft ?? bookDrafts[0];
   const memoryKey = activePanel as MemoryPanelKey;
 
   if (!activePanel) return null;
@@ -1956,6 +2148,7 @@ function SidePanel({
               <button
                 className="primary"
                 onClick={() => {
+                  void onScanResonance();
                   onGo("resonance");
                   onClose();
                 }}
@@ -2001,12 +2194,20 @@ function SidePanel({
           </div>
           <h3>为什么形成星轨</h3>
           <div className="match-list">
-            {[
-              ["时间", 95],
-              ["人物", 92],
-              ["地点", 88],
-              ["语义", 90],
-            ].map(([label, score]) => (
+            {(resonanceResult
+              ? ([
+                  ["时间", Math.round(resonanceResult.breakdown.time * 100)],
+                  ["人物", Math.round(resonanceResult.breakdown.people * 100)],
+                  ["地点", Math.round(resonanceResult.breakdown.location * 100)],
+                  ["语义", Math.round(resonanceResult.breakdown.semantic * 100)],
+                ] as const)
+              : ([
+                  ["时间", 95],
+                  ["人物", 92],
+                  ["地点", 88],
+                  ["语义", 90],
+                ] as const)
+            ).map(([label, score]) => (
               <div className="match-row" key={label}>
                 <span>{label}</span>
                 <div className="match-bar">
@@ -2113,15 +2314,16 @@ function SidePanel({
           <textarea
             aria-label="记忆内容"
             className="panel-textarea"
-            defaultValue="2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。"
+            onChange={(event) => onQuickRecordChange(event.target.value)}
+            value={quickRecordContent}
           />
           <div className="ai-card">
             <strong>整理预览</strong>
             <p>AI 将尝试提取时间、地点、人物、事件和情绪；默认不公开，也不会自动分享。</p>
           </div>
           <div className="big-actions">
-            <button className="primary" onClick={onLightMemory} type="button">
-              点亮为记忆星
+            <button className="primary" disabled={loading} onClick={onLightMemory} type="button">
+              {loading ? "AI 整理中…" : "点亮为记忆星"}
             </button>
             <button className="secondary" onClick={() => onToast("语音入口已准备")} type="button">
               改用语音
@@ -2153,13 +2355,41 @@ function SidePanel({
             <i className="switch" />
           </div>
           <div className="big-actions">
-            <button className="primary" onClick={() => onToast("分享范围已确认")} type="button">
-              确认分享
+            <button className="primary" disabled={loading} onClick={onConfirmShare} type="button">
+              {loading ? "生成链接中…" : "确认分享"}
             </button>
             <button className="secondary" onClick={onClose} type="button">
               再检查一下
             </button>
           </div>
+          {shareUrl ? (
+            <div className="ai-card share-link-card">
+              <strong>分享链接已生成</strong>
+              <p className="share-link-url">{shareUrl}</p>
+              <div className="big-actions">
+                <a
+                  className="primary"
+                  href={shareUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  在新标签页打开
+                </a>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(
+                      `${window.location.origin}${shareUrl}`,
+                    );
+                    onToast("链接已复制");
+                  }}
+                  type="button"
+                >
+                  复制链接
+                </button>
+              </div>
+            </div>
+          ) : null}
         </>
       ) : null}
     </motion.aside>

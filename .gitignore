@@ -7,6 +7,7 @@ out/
 dist/
 build/
 next-env.d.ts
+tsconfig.tsbuildinfo
 
 # Environment files
 .env
@@ -25,9 +26,15 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+.agents/
+.claude/
 
 # Test and tool caches
 coverage/
 .turbo/
 .vercel/
 .cache/
+docs/superpowers/
+
+# Local demo data (shared-book token store, etc.)
+.local-data/

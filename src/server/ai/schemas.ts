@@ -3,6 +3,7 @@ import type {
   BookGenerateResponse,
   MemoryExtractRequest,
   MemoryExtractResponse,
+  PublishBookRequest,
   ResonanceScanRequest,
   ResonanceScanResponse,
 } from "@/shared/types/galaxy";
@@ -50,4 +51,21 @@ export function isBookGenerateResponse(value: unknown): value is BookGenerateRes
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<BookGenerateResponse>;
   return !!candidate.draft && Array.isArray(candidate.sections) && typeof candidate.body === "string";
+}
+
+export function isPublishBookRequest(value: unknown): value is PublishBookRequest {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<PublishBookRequest>;
+  if (!candidate.draft || !Array.isArray(candidate.sections) || typeof candidate.body !== "string") {
+    return false;
+  }
+  if (!candidate.share || typeof candidate.share !== "object") {
+    return false;
+  }
+  const share = candidate.share as Partial<PublishBookRequest["share"]>;
+  return (
+    typeof share.showBody === "boolean" &&
+    typeof share.showSourceTitles === "boolean" &&
+    typeof share.showOriginalText === "boolean"
+  );
 }

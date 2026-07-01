@@ -8,26 +8,27 @@ import type {
 } from "@/shared/types/galaxy";
 
 import { generateBook, extractMemory, scanResonance } from "./mock-ai";
+import { extractMemoryLive, generateBookLive, hasOpenAI } from "./openai-client";
 
-const hasLiveModel = Boolean(process.env.ANTHROPIC_API_KEY);
+// 共鸣扫描保留 Mock（真实实现需要 embedding/向量检索，属 P1，见开发方案.md 2.2）。
+// 记忆抽取与家书生成在 OPENAI_API_KEY 存在时走真实 gpt-5.4-mini，否则回落 Mock。
 
 export async function extractMemoryWithFallback(
   request: MemoryExtractRequest,
 ): Promise<MemoryExtractResponse> {
-  if (!hasLiveModel) return extractMemory(request);
-  return extractMemory(request);
+  if (!hasOpenAI()) return extractMemory(request);
+  return extractMemoryLive(request);
 }
 
 export async function scanResonanceWithFallback(
   request: ResonanceScanRequest,
 ): Promise<ResonanceScanResponse> {
-  if (!hasLiveModel) return scanResonance(request);
   return scanResonance(request);
 }
 
 export async function generateBookWithFallback(
   request: BookGenerateRequest,
 ): Promise<BookGenerateResponse> {
-  if (!hasLiveModel) return generateBook(request);
-  return generateBook(request);
+  if (!hasOpenAI()) return generateBook(request);
+  return generateBookLive(request);
 }
