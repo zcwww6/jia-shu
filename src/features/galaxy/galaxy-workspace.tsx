@@ -273,7 +273,11 @@ const zoneContent: Record<
   },
 };
 
-export function GalaxyWorkspace() {
+export function GalaxyWorkspace({
+  initialPlanets = planets,
+}: {
+  initialPlanets?: Planet[];
+}) {
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
   const [activeRouteStep, setActiveRouteStep] = useState(0);
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
@@ -294,7 +298,7 @@ export function GalaxyWorkspace() {
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<GalaxyView>(initialView);
   const [isDragging, setIsDragging] = useState(false);
-  const [galaxyPlanets, setGalaxyPlanets] = useState<Planet[]>(planets);
+  const [galaxyPlanets, setGalaxyPlanets] = useState<Planet[]>(initialPlanets);
   const [hiddenPlanetIds, setHiddenPlanetIds] = useState<string[]>([]);
   const [galaxyLinks, setGalaxyLinks] = useState<PlanetLink[]>(planetLinks);
   const [visibleLinkKinds, setVisibleLinkKinds] = useState<PlanetLinkKind[]>([
