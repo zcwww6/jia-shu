@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { prisma } from "@/server/db/client";
+import { getPrismaClient } from "@/server/db/client";
 
 const galaxyBootstrapInclude = {
   planets: {
@@ -14,6 +14,8 @@ const galaxyBootstrapInclude = {
 } as const;
 
 export async function findPersonalGalaxy(userId: string) {
+  const prisma = getPrismaClient();
+
   return prisma.galaxy.findUnique({
     where: { userId },
     include: galaxyBootstrapInclude,
@@ -29,6 +31,8 @@ export async function createGalaxyWithSelfPlanet({
   galaxyName: string;
   selfPlanetName: string;
 }) {
+  const prisma = getPrismaClient();
+
   return prisma.galaxy.create({
     data: {
       userId,

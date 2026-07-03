@@ -4,11 +4,11 @@ import Resend from "next-auth/providers/resend";
 
 import { authConfig } from "@/auth.config";
 import { env } from "@/server/config/env";
-import { prisma } from "@/server/db/client";
+import { getPrismaClient } from "@/server/db/client";
 
 export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   ...authConfig,
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(getPrismaClient()),
   providers: [
     Resend({
       apiKey: env.AUTH_RESEND_API_KEY,
