@@ -4,6 +4,16 @@ const { createSharedBook, findSharedBookByToken } = vi.hoisted(() => ({
   createSharedBook: vi.fn(),
   findSharedBookByToken: vi.fn(),
 }));
+const { readFile } = vi.hoisted(() => ({
+  readFile: vi.fn(),
+}));
+
+vi.mock("node:fs/promises", () => ({
+  default: {
+    readFile,
+  },
+  readFile,
+}));
 
 vi.mock("@/server/db/shared-book-repo", () => ({
   createSharedBook,
@@ -33,6 +43,7 @@ describe("shared-books store", () => {
   beforeEach(() => {
     createSharedBook.mockReset();
     findSharedBookByToken.mockReset();
+    readFile.mockReset();
   });
 
   it("saves a shared book through the repo with the publishing user id", async () => {
@@ -68,10 +79,29 @@ describe("shared-books store", () => {
 
     await expect(getSharedBook("known-token")).resolves.toEqual(storedBook);
     expect(findSharedBookByToken).toHaveBeenCalledWith("known-token");
+    expect(readFile).not.toHaveBeenCalled();
   });
 
   it("returns null without calling the repo when token is empty", async () => {
     await expect(getSharedBook("")).resolves.toBeNull();
     expect(findSharedBookByToken).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the legacy json file when prisma has no matching token", async () => {
+    const legacyBook = {
+      ...publishPayload,
+      token: "legacy-token",
+      createdAt: "2026-07-04T00:00:00.000Z",
+    };
+    findSharedBookByToken.mockResolvedValue(null);
+    readFile.mockResolvedValue(
+      JSON.stringify({
+        "legacy-token": legacyBook,
+      }),
+    );
+
+    await expect(getSharedBook("legacy-token")).resolves.toEqual(legacyBook);
+    expect(findSharedBookByToken).toHaveBeenCalledWith("legacy-token");
+    expect(readFile).toHaveBeenCalledTimes(1);
   });
 });
