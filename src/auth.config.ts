@@ -1,6 +1,8 @@
 import type { NextAuthConfig } from "next-auth";
 
-const protectedPrefixes = ["/galaxy", "/planet", "/memory", "/resonance", "/books", "/settings"];
+export const protectedRoutePrefixes = ["/galaxy", "/planet", "/memory", "/resonance", "/books", "/settings"] as const;
+
+export const protectedRouteMatchers = protectedRoutePrefixes.map((prefix) => `${prefix}/:path*`);
 
 export const authConfig = {
   pages: {
@@ -10,7 +12,7 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request }) {
       const pathname = request.nextUrl.pathname;
-      const isProtectedRoute = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+      const isProtectedRoute = protectedRoutePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
       if (!isProtectedRoute) {
         return true;
