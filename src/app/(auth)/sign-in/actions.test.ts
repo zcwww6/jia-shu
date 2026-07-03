@@ -13,6 +13,10 @@ describe("requestMagicLink", () => {
     signIn.mockReset();
   });
 
+  it("rejects non-string email input when invoked directly", async () => {
+    await expect(requestMagicLink(42 as never)).rejects.toThrow("请输入有效的邮箱");
+  });
+
   it("rejects empty email input", async () => {
     await expect(requestMagicLink("")).rejects.toThrow("请输入邮箱");
   });
