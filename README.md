@@ -34,7 +34,6 @@ AI 驱动的家庭记忆星系工作台。当前阶段先完成可维护的 Next
 
 ```bash
 npx pnpm install
-npx pnpm dev
 ```
 
 ### Authenticated Baseline Setup
@@ -48,6 +47,7 @@ cp .env.example .env.local
 ```bash
 npx pnpm prisma generate
 npx pnpm prisma migrate dev
+npx pnpm dev
 ```
 
 常用验证：
