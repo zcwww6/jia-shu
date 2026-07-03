@@ -1,17 +1,26 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import { PrismaClient } from "@prisma/client";
 import Resend from "next-auth/providers/resend";
 
+import { authConfig } from "@/auth.config";
 import { env } from "@/server/config/env";
-import { prisma } from "@/server/db/client";
 
-const protectedPrefixes = ["/galaxy", "/planet", "/memory", "/resonance", "/books", "/settings"];
+const globalForAuthPrisma = globalThis as {
+  authPrisma?: PrismaClient;
+};
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  pages: {
-    signIn: "/sign-in",
-  },
+function getPrismaClient() {
+  if (!globalForAuthPrisma.authPrisma) {
+    globalForAuthPrisma.authPrisma = new PrismaClient({});
+  }
+
+  return globalForAuthPrisma.authPrisma;
+}
+
+export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
+  ...authConfig,
+  adapter: PrismaAdapter(getPrismaClient()),
   providers: [
     Resend({
       apiKey: env.AUTH_RESEND_API_KEY,
@@ -19,16 +28,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    authorized({ auth, request }) {
-      const pathname = request.nextUrl.pathname;
-      const isProtectedRoute = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-
-      if (!isProtectedRoute) {
-        return true;
-      }
-
-      return !!auth?.user;
-    },
+    ...authConfig.callbacks,
     session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
@@ -37,4 +37,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-});
+}));
