@@ -12,6 +12,7 @@ export interface GalaxyBootstrapRepo {
     galaxyName: string;
     selfPlanetName: string;
   }): Promise<GalaxyBootstrapRecord>;
+  isCreateConflict(error: unknown): boolean;
 }
 
 const PERSONAL_GALAXY_NAME = "我的星系";
@@ -31,6 +32,10 @@ export async function ensurePersonalGalaxy(userId: string, repo: GalaxyBootstrap
       selfPlanetName: SELF_PLANET_NAME,
     });
   } catch (error) {
+    if (!repo.isCreateConflict(error)) {
+      throw error;
+    }
+
     const concurrentGalaxy = await repo.findPersonalGalaxy(userId);
 
     if (concurrentGalaxy) {

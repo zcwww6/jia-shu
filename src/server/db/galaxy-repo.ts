@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "@/server/db/client";
 
 const galaxyBootstrapInclude = {
@@ -42,4 +44,8 @@ export async function createGalaxyWithSelfPlanet({
     },
     include: galaxyBootstrapInclude,
   });
+}
+
+export function isCreateConflict(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

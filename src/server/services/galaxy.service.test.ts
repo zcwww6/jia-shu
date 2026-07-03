@@ -7,6 +7,7 @@ describe("ensurePersonalGalaxy", () => {
     const repo = {
       findPersonalGalaxy: vi.fn().mockResolvedValue({ id: "galaxy_1", planets: [] }),
       createGalaxyWithSelfPlanet: vi.fn(),
+      isCreateConflict: vi.fn(),
     };
 
     const result = await ensurePersonalGalaxy("user_1", repo);
@@ -19,6 +20,7 @@ describe("ensurePersonalGalaxy", () => {
     const repo = {
       findPersonalGalaxy: vi.fn().mockResolvedValue(null),
       createGalaxyWithSelfPlanet: vi.fn().mockResolvedValue({ id: "galaxy_new", planets: [{ id: "planet_self" }] }),
+      isCreateConflict: vi.fn(),
     };
 
     const result = await ensurePersonalGalaxy("user_1", repo);
@@ -31,17 +33,46 @@ describe("ensurePersonalGalaxy", () => {
     expect(result.id).toBe("galaxy_new");
   });
 
-  it("returns the galaxy created by a concurrent request when create loses the race", async () => {
+  it("returns the galaxy created by a concurrent request when create loses the race only for conflicts", async () => {
     const raceWinnerGalaxy = { id: "galaxy_race", planets: [{ id: "planet_self" }] };
+    const createError = new Error("unique constraint");
     const repo = {
       findPersonalGalaxy: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(raceWinnerGalaxy),
-      createGalaxyWithSelfPlanet: vi.fn().mockRejectedValue(new Error("unique constraint")),
+      createGalaxyWithSelfPlanet: vi.fn().mockRejectedValue(createError),
+      isCreateConflict: vi.fn().mockReturnValue(true),
     };
 
     const result = await ensurePersonalGalaxy("user_1", repo);
 
+    expect(repo.isCreateConflict).toHaveBeenCalledWith(createError);
     expect(repo.findPersonalGalaxy).toHaveBeenNthCalledWith(1, "user_1");
     expect(repo.findPersonalGalaxy).toHaveBeenNthCalledWith(2, "user_1");
     expect(result).toEqual(raceWinnerGalaxy);
+  });
+
+  it("rethrows non-conflict create failures", async () => {
+    const createError = new Error("database offline");
+    const repo = {
+      findPersonalGalaxy: vi.fn().mockResolvedValue(null),
+      createGalaxyWithSelfPlanet: vi.fn().mockRejectedValue(createError),
+      isCreateConflict: vi.fn().mockReturnValue(false),
+    };
+
+    await expect(ensurePersonalGalaxy("user_1", repo)).rejects.toBe(createError);
+    expect(repo.isCreateConflict).toHaveBeenCalledWith(createError);
+    expect(repo.findPersonalGalaxy).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows the original conflict when reread still finds no galaxy", async () => {
+    const createError = new Error("unique constraint");
+    const repo = {
+      findPersonalGalaxy: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(null),
+      createGalaxyWithSelfPlanet: vi.fn().mockRejectedValue(createError),
+      isCreateConflict: vi.fn().mockReturnValue(true),
+    };
+
+    await expect(ensurePersonalGalaxy("user_1", repo)).rejects.toBe(createError);
+    expect(repo.isCreateConflict).toHaveBeenCalledWith(createError);
+    expect(repo.findPersonalGalaxy).toHaveBeenCalledTimes(2);
   });
 });
