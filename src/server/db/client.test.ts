@@ -54,4 +54,22 @@ describe("prisma client", () => {
     expect(prismaPgMock).toHaveBeenCalledWith({ connectionString: "postgresql://demo" });
     expect(prismaClientMock).toHaveBeenCalledWith({ adapter });
   });
+
+  it("reuses the same client for repeated calls in production", async () => {
+    process.env.DATABASE_URL = "postgresql://demo";
+    process.env.NODE_ENV = "production";
+
+    const adapter = { kind: "adapter" };
+    const client = { kind: "client" };
+
+    prismaPgMock.mockReturnValue(adapter);
+    prismaClientMock.mockReturnValue(client);
+
+    const { getPrismaClient } = await import("./client");
+
+    expect(getPrismaClient()).toBe(client);
+    expect(getPrismaClient()).toBe(client);
+    expect(prismaPgMock).toHaveBeenCalledTimes(1);
+    expect(prismaClientMock).toHaveBeenCalledTimes(1);
+  });
 });

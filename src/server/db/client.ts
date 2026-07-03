@@ -19,11 +19,11 @@ export function getPrismaClient() {
     return globalForPrisma.prisma;
   }
 
-  const prisma = createPrismaClient();
+  globalForPrisma.prisma = createPrismaClient();
 
   if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = prisma;
+    return globalForPrisma.prisma;
   }
 
-  return prisma;
+  return globalForPrisma.prisma;
 }
