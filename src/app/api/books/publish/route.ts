@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
 import { saveSharedBook } from "@/server/store/shared-books";
@@ -10,7 +11,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "家书发布请求格式不正确" }, { status: 400 });
   }
 
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    return NextResponse.json({ message: "请先登录后再发布家书" }, { status: 401 });
+  }
+
   const stored = await saveSharedBook({
+    userId,
     draft: payload.draft,
     body: payload.body,
     sections: payload.sections,
