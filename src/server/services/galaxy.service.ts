@@ -24,9 +24,19 @@ export async function ensurePersonalGalaxy(userId: string, repo: GalaxyBootstrap
     return existingGalaxy;
   }
 
-  return repo.createGalaxyWithSelfPlanet({
-    userId,
-    galaxyName: PERSONAL_GALAXY_NAME,
-    selfPlanetName: SELF_PLANET_NAME,
-  });
+  try {
+    return await repo.createGalaxyWithSelfPlanet({
+      userId,
+      galaxyName: PERSONAL_GALAXY_NAME,
+      selfPlanetName: SELF_PLANET_NAME,
+    });
+  } catch (error) {
+    const concurrentGalaxy = await repo.findPersonalGalaxy(userId);
+
+    if (concurrentGalaxy) {
+      return concurrentGalaxy;
+    }
+
+    throw error;
+  }
 }

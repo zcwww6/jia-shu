@@ -30,4 +30,18 @@ describe("ensurePersonalGalaxy", () => {
     });
     expect(result.id).toBe("galaxy_new");
   });
+
+  it("returns the galaxy created by a concurrent request when create loses the race", async () => {
+    const raceWinnerGalaxy = { id: "galaxy_race", planets: [{ id: "planet_self" }] };
+    const repo = {
+      findPersonalGalaxy: vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(raceWinnerGalaxy),
+      createGalaxyWithSelfPlanet: vi.fn().mockRejectedValue(new Error("unique constraint")),
+    };
+
+    const result = await ensurePersonalGalaxy("user_1", repo);
+
+    expect(repo.findPersonalGalaxy).toHaveBeenNthCalledWith(1, "user_1");
+    expect(repo.findPersonalGalaxy).toHaveBeenNthCalledWith(2, "user_1");
+    expect(result).toEqual(raceWinnerGalaxy);
+  });
 });
