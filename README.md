@@ -37,6 +37,19 @@ npx pnpm install
 npx pnpm dev
 ```
 
+### Authenticated Baseline Setup
+
+```bash
+cp .env.example .env.local
+```
+
+填入 `.env.local` 中的 `DATABASE_URL`、`AUTH_SECRET`、`AUTH_RESEND_API_KEY`、`AUTH_RESEND_FROM`，然后执行：
+
+```bash
+npx pnpm prisma generate
+npx pnpm prisma migrate dev
+```
+
 常用验证：
 
 ```bash
