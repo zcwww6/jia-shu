@@ -28,37 +28,137 @@ AI 驱动的家庭记忆星系工作台。当前阶段先完成可维护的 Next
 - shadcn/ui 风格基础组件
 - Framer Motion
 - Vitest + Testing Library
-- Mock 数据优先，暂不接真实数据库和 AI
+- PostgreSQL + Prisma 持久化；OpenAI 能力按需启用
 
 ## 本地开发
 
-```bash
+项目默认通过 Docker Compose 在一台本地电脑上运行 PostgreSQL、数据库迁移、Next.js 应用和 Nginx，不需要云服务器或 RDS。
+
+### 运行要求
+
+- Windows 上安装 Docker Desktop 并切换到 Linux containers；其他系统可安装 Docker Engine。
+- 安装 Docker Compose v2（使用 `docker compose` 命令）。
+- 电脑能访问 Resend API，并准备一个已验证、可发信的 Resend API Key 和发件人地址，否则邮件登录无法使用。
+- OpenAI API 仅在启用真实 AI 能力时需要；不用时可将 `OPENAI_API_KEY` 留空。
+
+先在 PowerShell 中确认 Docker Engine 和 Compose 可用：
+
+```powershell
+docker info
+docker compose version
+```
+
+### 首次配置
+
+复制 Docker 环境变量模板；`.env.docker` 包含密钥，不要提交到 Git：
+
+```powershell
+Copy-Item .env.docker.example .env.docker
+```
+
+生成仅含十六进制字符、可安全放入数据库 URL 的密码：
+
+```powershell
+openssl rand -hex 32
+```
+
+将结果同时填入 `.env.docker` 的 `POSTGRES_PASSWORD`，以及 `DATABASE_URL` 中密码所在的位置。两处必须完全相同，且容器内数据库主机名必须保持为 `postgres`，例如结构应为 `postgresql://jiashu:<同一个密码>@postgres:5432/jiashu`。不要使用示例密码，也不要把真实密码粘贴到命令或文档中。
+
+再生成 Auth.js 密钥：
+
+```powershell
+openssl rand -base64 32
+```
+
+将结果填入 `AUTH_SECRET`。同时把 `AUTH_RESEND_API_KEY` 改成可用的 Resend API Key，把 `AUTH_RESEND_FROM` 改成 Resend 已验证域名下的发件人；保留 `AUTH_URL=http://localhost`。如需真实 AI，再填写 `OPENAI_API_KEY`，并按服务商配置 `OPENAI_MODEL` 和 `OPENAI_BASE_URL`。
+
+### 首次启动与检查
+
+构建镜像并在后台启动全部服务：
+
+```powershell
+docker compose --env-file .env.docker up -d --build
+docker compose --env-file .env.docker ps
+docker compose --env-file .env.docker logs migrate
+```
+
+`migrate` 日志应显示迁移成功，`postgres`、`app` 和 `nginx` 应为运行或健康状态。随后访问 <http://localhost>。
+
+### 日常启停
+
+```powershell
+docker compose --env-file .env.docker stop
+docker compose --env-file .env.docker up -d
+docker compose --env-file .env.docker down
+```
+
+`stop` 保留容器，`down` 删除容器和网络但保留命名卷。**严禁把 `docker compose down -v` 当作日常命令：`-v` 会删除 PostgreSQL 数据卷并造成数据丢失。** 只有确认已有可恢复备份、并明确要销毁本地数据时才可使用它。
+
+### 升级
+
+升级前先按下一节备份，然后依次拉取基础镜像、重建、迁移和启动：
+
+```powershell
+docker compose --env-file .env.docker build --pull
+docker compose --env-file .env.docker run --rm migrate
+docker compose --env-file .env.docker up -d
+docker compose --env-file .env.docker ps
+```
+
+如果构建、迁移或健康检查失败，先查看对应服务日志，不要删除数据卷。
+
+### 数据库备份
+
+仓库的 `backups` 目录挂载为数据库容器内的 `/backups`。以下命令以 PostgreSQL custom format 直接生成手工备份：
+
+```powershell
+New-Item -ItemType Directory -Force backups | Out-Null
+docker compose --env-file .env.docker exec -T postgres pg_dump -U jiashu -d jiashu -Fc -f /backups/jiashu-manual.dump
+Get-Item .\backups\jiashu-manual.dump
+```
+
+命名卷 `postgres_data` 本身不是备份；磁盘损坏会同时影响卷和本机备份。定期把 `.\backups\jiashu-manual.dump` 复制到另一块磁盘或 NAS，并按日期保留多个版本。
+
+### 数据库恢复
+
+恢复会覆盖当前数据库内容。先确认备份文件存在并停止会访问数据库的 `app` 和 `nginx`，再恢复、补跑迁移，最后启动应用：
+
+```powershell
+Get-Item .\backups\jiashu-manual.dump
+docker compose --env-file .env.docker stop app nginx
+docker compose --env-file .env.docker exec -T postgres pg_restore -U jiashu -d jiashu --clean --if-exists --no-owner /backups/jiashu-manual.dump
+docker compose --env-file .env.docker run --rm migrate
+docker compose --env-file .env.docker up -d app nginx
+docker compose --env-file .env.docker ps
+```
+
+恢复后检查 <http://localhost/api/health/ready>，并实际验证邮件登录、进入星系、发布家书和打开分享链接。若恢复失败，保持应用停止，先排查 `pg_restore` 输出，不要继续写入数据库。
+
+### 源码开发
+
+需要热更新时，可只启动 Docker 中的数据库，并从宿主机运行 Next.js：
+
+```powershell
+Copy-Item .env.example .env.local
+docker compose --env-file .env.docker -f compose.yaml -f compose.dev.yaml up -d postgres
 npx pnpm install
-```
-
-### Authenticated Baseline Setup
-
-```bash
-cp .env.example .env.local
-```
-
-填入 `.env.local` 中的 `DATABASE_URL`、`AUTH_SECRET`、`AUTH_RESEND_API_KEY`、`AUTH_RESEND_FROM`，然后执行：
-
-```bash
 npx pnpm prisma generate
-npx pnpm prisma migrate dev
 npx pnpm dev
 ```
 
-常用验证：
+此模式下，将 `.env.local` 的 `DATABASE_URL` 设置为 `postgresql://jiashu:<与 POSTGRES_PASSWORD 相同的密码>@127.0.0.1:5432/jiashu`。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。
 
-```bash
+### 提交前验证
+
+```powershell
+npx pnpm prisma generate
 npx pnpm test
 npx pnpm lint
 npx pnpm build
+docker compose --env-file .env.docker config --quiet
 ```
 
-如果本机已通过 Corepack 正常启用 `pnpm`，也可以直接使用 `pnpm install`、`pnpm dev`。
+如果本机已通过 Corepack 正常启用 `pnpm`，也可以直接使用对应的 `pnpm` 命令。
 
 ## 目录结构
 
