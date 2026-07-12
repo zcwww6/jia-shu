@@ -179,11 +179,12 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 docker compose --env-file .env.docker -f compose.yaml -f compose.dev.yaml up -d postgres
 npx pnpm install
 npx pnpm prisma generate
+$env:DATABASE_URL = $hostDatabaseUrl
 npx pnpm prisma migrate deploy
 npx pnpm dev
 ```
 
-上述命令从已配置的 `.env.docker` 生成 `.env.local`，只把数据库容器主机名替换成本机回环地址，并复制认证、Resend 和可选 OpenAI 配置；引号转义会保留 `AUTH_RESEND_FROM` 的显示名，空的可选值也会正常写入。启动开发服务器前会执行生产式迁移，因此全新数据库也会获得完整 schema。`.env.local` 包含密钥，不要提交到 Git。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。
+上述命令从已配置的 `.env.docker` 生成 `.env.local`，只把数据库容器主机名替换成本机回环地址，并复制认证、Resend 和可选 OpenAI 配置；引号转义会保留 `AUTH_RESEND_FROM` 的显示名，空的可选值也会正常写入。Prisma 的 `dotenv/config` 不会自动加载 `.env.local`，所以迁移前还会将宿主机数据库地址显式导出为当前 PowerShell 的 `DATABASE_URL`。启动开发服务器前会执行生产式迁移，因此全新数据库也会获得完整 schema。`.env.local` 包含密钥，不要提交到 Git。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。
 
 ### 提交前验证
 
