@@ -40,6 +40,7 @@ AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 P
 - 安装 Docker Compose v2（使用 `docker compose` 命令）。
 - 电脑能访问 Resend API，并准备一个已验证、可发信的 Resend API Key 和发件人地址，否则邮件登录无法使用。
 - OpenAI API 仅在启用真实 AI 能力时需要；不用时可将 `OPENAI_API_KEY` 留空。
+- 如需从源码开发，安装 Node.js 22 和 Corepack；后续 `corepack pnpm` 会使用仓库 `packageManager` 固定的 pnpm 11.8.0。
 
 先在 PowerShell 中确认 Docker Engine 和 Compose 可用：
 
@@ -106,43 +107,73 @@ docker compose --env-file .env.docker down
 
 ### 升级
 
-升级前先按下一节备份，然后依次拉取基础镜像、重建、迁移和启动：
+升级前先按下一节生成并验证新备份。备份成功后构建镜像；只有构建成功才停止应用并执行迁移，迁移成功后才启动新版本：
 
 ```powershell
 docker compose --env-file .env.docker build --pull
+if ($LASTEXITCODE -ne 0) { throw '镜像构建失败；当前应用保持原状。' }
+docker compose --env-file .env.docker stop app nginx
+if ($LASTEXITCODE -ne 0) { throw '停止 app/nginx 失败；不要继续迁移。' }
 docker compose --env-file .env.docker run --rm migrate
+if ($LASTEXITCODE -ne 0) { throw '数据库迁移失败；app/nginx 保持停止，请先排查。' }
 docker compose --env-file .env.docker up -d
+if ($LASTEXITCODE -ne 0) { throw '新版本启动失败，请检查服务日志。' }
 docker compose --env-file .env.docker ps
+if ($LASTEXITCODE -ne 0) { throw '读取服务状态失败。' }
 ```
 
-如果构建、迁移或健康检查失败，先查看对应服务日志，不要删除数据卷。
+如果构建、迁移或健康检查失败，先查看对应服务日志，不要删除数据卷。迁移失败时上述 `throw` 会阻止后续启动，避免应用在未知 schema 上继续写入。
 
 ### 数据库备份
 
-仓库的 `backups` 目录挂载为数据库容器内的 `/backups`。以下命令以 PostgreSQL custom format 直接生成手工备份：
+仓库的 `backups` 目录挂载为数据库容器内的 `/backups`。以下命令使用时间戳创建 PostgreSQL custom format 临时归档，验证归档可读取后才改为最终文件名，因此失败的导出不会覆盖上一次有效备份：
 
 ```powershell
 New-Item -ItemType Directory -Force backups | Out-Null
-docker compose --env-file .env.docker exec -T postgres pg_dump -U jiashu -d jiashu -Fc -f /backups/jiashu-manual.dump
-Get-Item .\backups\jiashu-manual.dump
+$backupStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$backupName = "jiashu-$backupStamp.dump"
+$tempBackupName = "$backupName.tmp"
+$finalBackupPath = Join-Path .\backups $backupName
+if (Test-Path $finalBackupPath) { throw "备份文件已存在，拒绝覆盖：$finalBackupPath" }
+
+docker compose --env-file .env.docker exec -T postgres pg_dump -U jiashu -d jiashu -Fc -f "/backups/$tempBackupName"
+if ($LASTEXITCODE -ne 0) { throw 'pg_dump 失败；临时文件不会转为正式备份。' }
+docker compose --env-file .env.docker exec -T postgres pg_restore --list "/backups/$tempBackupName" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw '备份归档校验失败；临时文件不会转为正式备份。' }
+docker compose --env-file .env.docker exec -T postgres mv "/backups/$tempBackupName" "/backups/$backupName"
+if ($LASTEXITCODE -ne 0) { throw '备份归档改名失败。' }
+Get-Item $finalBackupPath
 ```
 
-命名卷 `postgres_data` 本身不是备份；磁盘损坏会同时影响卷和本机备份。定期把 `.\backups\jiashu-manual.dump` 复制到另一块磁盘或 NAS，并按日期保留多个版本。
+命名卷 `postgres_data` 本身不是备份；磁盘损坏会同时影响卷和本机备份。定期把时间戳命名的 `.\backups\jiashu-*.dump` 复制到另一块磁盘或 NAS，并保留多个版本。失败留下的 `*.dump.tmp` 不是有效备份，可以在查明原因后删除。
 
 ### 数据库恢复
 
-恢复会覆盖当前数据库内容。先确认备份文件存在并停止会访问数据库的 `app` 和 `nginx`，再恢复、补跑迁移，最后启动应用：
+恢复会完全替换当前数据库。**开始前先按上一节为当前状态生成一份新的、已通过 `pg_restore --list` 校验的备份，并复制到另一块磁盘或 NAS。** 然后明确选择要恢复的时间戳文件；不要使用 `*.tmp`，也不要复用刚创建的当前状态备份文件名。
 
 ```powershell
-Get-Item .\backups\jiashu-manual.dump
+$backupName = 'jiashu-20260712-210000.dump'
+$restorePath = Join-Path .\backups $backupName
+if ($backupName -notmatch '^jiashu-\d{8}-\d{6}\.dump$' -or -not (Test-Path $restorePath)) { throw "恢复文件不存在或不是正式备份：$restorePath" }
+Get-Item $restorePath
+
 docker compose --env-file .env.docker stop app nginx
-docker compose --env-file .env.docker exec -T postgres pg_restore -U jiashu -d jiashu --clean --if-exists --no-owner /backups/jiashu-manual.dump
+if ($LASTEXITCODE -ne 0) { throw '停止 app/nginx 失败；不要继续恢复。' }
+docker compose --env-file .env.docker exec -T postgres dropdb -U jiashu --if-exists --force jiashu
+if ($LASTEXITCODE -ne 0) { throw '删除目标数据库失败；app/nginx 保持停止。' }
+docker compose --env-file .env.docker exec -T postgres createdb -U jiashu -O jiashu jiashu
+if ($LASTEXITCODE -ne 0) { throw '重建空数据库失败；app/nginx 保持停止。' }
+docker compose --env-file .env.docker exec -T postgres pg_restore -U jiashu -d jiashu --exit-on-error --single-transaction --no-owner "/backups/$backupName"
+if ($LASTEXITCODE -ne 0) { throw 'pg_restore 失败；app/nginx 保持停止，请从已验证备份重新恢复。' }
 docker compose --env-file .env.docker run --rm migrate
+if ($LASTEXITCODE -ne 0) { throw '恢复后的数据库迁移失败；app/nginx 保持停止。' }
 docker compose --env-file .env.docker up -d app nginx
+if ($LASTEXITCODE -ne 0) { throw 'app/nginx 启动失败，请检查服务日志。' }
 docker compose --env-file .env.docker ps
+if ($LASTEXITCODE -ne 0) { throw '读取服务状态失败。' }
 ```
 
-恢复后检查 <http://localhost/api/health/ready>，并实际验证邮件登录、进入星系、发布家书和打开分享链接。若恢复失败，保持应用停止，先排查 `pg_restore` 输出，不要继续写入数据库。
+每个原生命令都在成功后才继续；任何 `throw` 都会阻止启动应用。恢复后检查 <http://localhost/api/health/ready>，并实际验证邮件登录、进入星系、发布家书和打开分享链接。若恢复失败，保持应用停止，先排查命令输出，不要继续写入数据库。恢复流程通过重建空库避免在部分已有对象上使用 `--clean`。
 
 ### 源码开发
 
@@ -177,11 +208,11 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllLines((Join-Path (Get-Location) '.env.local'), $localEnv, $utf8NoBom)
 
 docker compose --env-file .env.docker -f compose.yaml -f compose.dev.yaml up -d postgres
-npx pnpm install
-npx pnpm prisma generate
+corepack pnpm install
+corepack pnpm prisma generate
 $env:DATABASE_URL = $hostDatabaseUrl
-npx pnpm prisma migrate deploy
-npx pnpm dev
+corepack pnpm prisma migrate deploy
+corepack pnpm dev
 ```
 
 上述命令从已配置的 `.env.docker` 生成 `.env.local`，只把数据库容器主机名替换成本机回环地址，并复制认证、Resend 和可选 OpenAI 配置；引号转义会保留 `AUTH_RESEND_FROM` 的显示名，空的可选值也会正常写入。Prisma 的 `dotenv/config` 不会自动加载 `.env.local`，所以迁移前还会将宿主机数据库地址显式导出为当前 PowerShell 的 `DATABASE_URL`。启动开发服务器前会执行生产式迁移，因此全新数据库也会获得完整 schema。`.env.local` 包含密钥，不要提交到 Git。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。
@@ -189,10 +220,10 @@ npx pnpm dev
 ### 提交前验证
 
 ```powershell
-npx pnpm prisma generate
-npx pnpm test
-npx pnpm lint
-npx pnpm build
+corepack pnpm prisma generate
+corepack pnpm test
+corepack pnpm lint
+corepack pnpm build
 docker compose --env-file .env.docker config --quiet
 ```
 
