@@ -149,17 +149,41 @@ docker compose --env-file .env.docker ps
 需要热更新时，可只启动 Docker 中的数据库，并从宿主机运行 Next.js：
 
 ```powershell
-Copy-Item .env.example .env.local
-docker compose --env-file .env.docker -f compose.yaml -f compose.dev.yaml up -d postgres
 $dockerEnv = ConvertFrom-StringData (Get-Content .env.docker -Raw)
-$env:DATABASE_URL = $dockerEnv.DATABASE_URL.Replace('@postgres:5432', '@127.0.0.1:5432')
+$hostDatabaseUrl = $dockerEnv.DATABASE_URL.Replace('@postgres:5432', '@127.0.0.1:5432')
+
+function ConvertTo-DotEnvValue {
+  param([AllowNull()][AllowEmptyString()][string]$Value)
+  if ($null -eq $Value) { $Value = '' }
+  if ($Value.Length -ge 2 -and $Value.StartsWith('"') -and $Value.EndsWith('"')) {
+    $Value = $Value.Substring(1, $Value.Length - 2)
+  }
+  $escaped = $Value.Replace('\', '\\').Replace('"', '\"').Replace("`r", '\r').Replace("`n", '\n')
+  return '"' + $escaped + '"'
+}
+
+$localEnv = @(
+  "DATABASE_URL=$(ConvertTo-DotEnvValue $hostDatabaseUrl)"
+  "AUTH_SECRET=$(ConvertTo-DotEnvValue $dockerEnv.AUTH_SECRET)"
+  'AUTH_URL="http://localhost:3000"'
+  'AUTH_TRUST_HOST="true"'
+  "AUTH_RESEND_API_KEY=$(ConvertTo-DotEnvValue $dockerEnv.AUTH_RESEND_API_KEY)"
+  "AUTH_RESEND_FROM=$(ConvertTo-DotEnvValue $dockerEnv.AUTH_RESEND_FROM)"
+  "OPENAI_API_KEY=$(ConvertTo-DotEnvValue $dockerEnv.OPENAI_API_KEY)"
+  "OPENAI_MODEL=$(ConvertTo-DotEnvValue $dockerEnv.OPENAI_MODEL)"
+  "OPENAI_BASE_URL=$(ConvertTo-DotEnvValue $dockerEnv.OPENAI_BASE_URL)"
+)
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllLines((Join-Path (Get-Location) '.env.local'), $localEnv, $utf8NoBom)
+
+docker compose --env-file .env.docker -f compose.yaml -f compose.dev.yaml up -d postgres
 npx pnpm install
 npx pnpm prisma generate
 npx pnpm prisma migrate deploy
 npx pnpm dev
 ```
 
-上述命令从 `.env.docker` 读取 `DATABASE_URL`，只把容器主机名替换成本机回环地址，并在启动开发服务器前执行生产式迁移，因此全新数据库也会获得完整 schema。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。关闭当前 PowerShell 后，临时设置的 `$env:DATABASE_URL` 会自动失效。
+上述命令从已配置的 `.env.docker` 生成 `.env.local`，只把数据库容器主机名替换成本机回环地址，并复制认证、Resend 和可选 OpenAI 配置；引号转义会保留 `AUTH_RESEND_FROM` 的显示名，空的可选值也会正常写入。启动开发服务器前会执行生产式迁移，因此全新数据库也会获得完整 schema。`.env.local` 包含密钥，不要提交到 Git。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。
 
 ### 提交前验证
 
