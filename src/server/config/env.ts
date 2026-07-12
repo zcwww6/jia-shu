@@ -8,10 +8,21 @@ function required(source: EnvSource, key: keyof EnvSource) {
   return value;
 }
 
+function requiredBoolean(source: EnvSource, key: keyof EnvSource) {
+  required(source, key);
+  const value = source[key];
+  if (value !== "true" && value !== "false") {
+    throw new Error(`Invalid boolean env: ${String(key)}`);
+  }
+  return value === "true";
+}
+
 export function loadAppEnv(source: EnvSource = process.env) {
   return {
     DATABASE_URL: required(source, "DATABASE_URL"),
     AUTH_SECRET: required(source, "AUTH_SECRET"),
+    AUTH_URL: required(source, "AUTH_URL"),
+    AUTH_TRUST_HOST: requiredBoolean(source, "AUTH_TRUST_HOST"),
     AUTH_RESEND_API_KEY: required(source, "AUTH_RESEND_API_KEY"),
     AUTH_RESEND_FROM: required(source, "AUTH_RESEND_FROM"),
     OPENAI_API_KEY: source.OPENAI_API_KEY?.trim() || null,
@@ -28,6 +39,12 @@ export const env: AppEnv = {
   },
   get AUTH_SECRET() {
     return required(process.env, "AUTH_SECRET");
+  },
+  get AUTH_URL() {
+    return required(process.env, "AUTH_URL");
+  },
+  get AUTH_TRUST_HOST() {
+    return requiredBoolean(process.env, "AUTH_TRUST_HOST");
   },
   get AUTH_RESEND_API_KEY() {
     return required(process.env, "AUTH_RESEND_API_KEY");
