@@ -1,9 +1,16 @@
 name: jiashu
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:17.5-alpine
     restart: unless-stopped
+    logging: *default-logging
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -24,6 +31,7 @@ services:
       context: .
       target: migrate
     restart: "no"
+    logging: *default-logging
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
     depends_on:
@@ -37,6 +45,7 @@ services:
       context: .
       target: runtime
     restart: unless-stopped
+    logging: *default-logging
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
@@ -63,8 +72,9 @@ services:
   nginx:
     image: nginx:1.28-alpine
     restart: unless-stopped
+    logging: *default-logging
     ports:
-      - "80:80"
+      - "127.0.0.1:80:80"
     volumes:
       - type: bind
         source: ./docker/nginx/default.conf
