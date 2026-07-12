@@ -1,6 +1,6 @@
 # 家书星球
 
-AI 驱动的家庭记忆星系工作台。当前阶段先完成可维护的 Next.js 工程基线，使用 Mock 数据跑通 v7.3 的“我的星系 / 星球内部漫游 / 共鸣星轨 / 家书工坊”体验壳。
+AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 Prisma 持久化到 PostgreSQL；Mock 仅作为 AI 能力和演示体验的回退。
 
 ## 当前主线
 
@@ -56,21 +56,31 @@ docker compose version
 Copy-Item .env.docker.example .env.docker
 ```
 
-生成仅含十六进制字符、可安全放入数据库 URL 的密码：
+使用 Windows PowerShell 自带的 .NET 加密随机数生成器，生成仅含小写十六进制字符、可安全放入数据库 URL 的密码：
 
 ```powershell
-openssl rand -hex 32
+$dbPasswordBytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($dbPasswordBytes)
+$dbPassword = ([System.BitConverter]::ToString($dbPasswordBytes)).Replace('-', '').ToLowerInvariant()
+$dbPassword
+$rng.Dispose()
 ```
 
-将结果同时填入 `.env.docker` 的 `POSTGRES_PASSWORD`，以及 `DATABASE_URL` 中密码所在的位置。两处必须完全相同，且容器内数据库主机名必须保持为 `postgres`，例如结构应为 `postgresql://jiashu:<同一个密码>@postgres:5432/jiashu`。不要使用示例密码，也不要把真实密码粘贴到命令或文档中。
+命令输出的 `$dbPassword` 同时填入 `.env.docker` 的 `POSTGRES_PASSWORD`，以及 `DATABASE_URL` 中密码所在的位置。两处必须完全相同，且容器内数据库主机名必须保持为 `postgres`，例如结构应为 `postgresql://jiashu:<同一个密码>@postgres:5432/jiashu`。不要使用示例密码，也不要把真实密码粘贴到命令或文档中。
 
 再生成 Auth.js 密钥：
 
 ```powershell
-openssl rand -base64 32
+$authSecretBytes = New-Object byte[] 32
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($authSecretBytes)
+$authSecret = [System.Convert]::ToBase64String($authSecretBytes)
+$authSecret
+$rng.Dispose()
 ```
 
-将结果填入 `AUTH_SECRET`。同时把 `AUTH_RESEND_API_KEY` 改成可用的 Resend API Key，把 `AUTH_RESEND_FROM` 改成 Resend 已验证域名下的发件人；保留 `AUTH_URL=http://localhost`。如需真实 AI，再填写 `OPENAI_API_KEY`，并按服务商配置 `OPENAI_MODEL` 和 `OPENAI_BASE_URL`。
+命令输出的 `$authSecret` 填入 `AUTH_SECRET`。同时把 `AUTH_RESEND_API_KEY` 改成可用的 Resend API Key，把 `AUTH_RESEND_FROM` 改成 Resend 已验证域名下的发件人；保留 `AUTH_URL=http://localhost`。如需真实 AI，再填写 `OPENAI_API_KEY`，并按服务商配置 `OPENAI_MODEL` 和 `OPENAI_BASE_URL`。
 
 ### 首次启动与检查
 
@@ -141,12 +151,15 @@ docker compose --env-file .env.docker ps
 ```powershell
 Copy-Item .env.example .env.local
 docker compose --env-file .env.docker -f compose.yaml -f compose.dev.yaml up -d postgres
+$dockerEnv = ConvertFrom-StringData (Get-Content .env.docker -Raw)
+$env:DATABASE_URL = $dockerEnv.DATABASE_URL.Replace('@postgres:5432', '@127.0.0.1:5432')
 npx pnpm install
 npx pnpm prisma generate
+npx pnpm prisma migrate deploy
 npx pnpm dev
 ```
 
-此模式下，将 `.env.local` 的 `DATABASE_URL` 设置为 `postgresql://jiashu:<与 POSTGRES_PASSWORD 相同的密码>@127.0.0.1:5432/jiashu`。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。
+上述命令从 `.env.docker` 读取 `DATABASE_URL`，只把容器主机名替换成本机回环地址，并在启动开发服务器前执行生产式迁移，因此全新数据库也会获得完整 schema。`compose.dev.yaml` 仅为开发数据库开放 `127.0.0.1:5432`，不要把它改成公网监听。关闭当前 PowerShell 后，临时设置的 `$env:DATABASE_URL` 会自动失效。
 
 ### 提交前验证
 
