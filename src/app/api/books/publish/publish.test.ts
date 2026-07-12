@@ -1,9 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { saveSharedBook } = vi.hoisted(() => ({ saveSharedBook: vi.fn() }));
+const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 
 vi.mock("@/server/store/shared-books", () => ({
   saveSharedBook,
+}));
+
+vi.mock("@/auth", () => ({
+  auth,
 }));
 
 import { POST } from "./route";
@@ -36,9 +41,11 @@ function jsonRequest(body: unknown) {
 describe("POST /api/books/publish", () => {
   beforeEach(() => {
     saveSharedBook.mockReset();
+    auth.mockReset();
   });
 
   it("校验通过后存储并返回 token 与 url", async () => {
+    auth.mockResolvedValue({ user: { id: "user-1" } });
     saveSharedBook.mockResolvedValue({ ...validPayload, token: "tok123abc", createdAt: "2026-07-01T00:00:00.000Z" });
 
     const response = await POST(jsonRequest(validPayload));
@@ -47,12 +54,21 @@ describe("POST /api/books/publish", () => {
     expect(response.status).toBe(200);
     expect(json.token).toBe("tok123abc");
     expect(json.url).toBe("/share/tok123abc");
-    expect(saveSharedBook).toHaveBeenCalledWith(expect.objectContaining({ draft: validPayload.draft }));
+    expect(saveSharedBook).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", draft: validPayload.draft }));
   });
 
   it("格式不正确时返回 400", async () => {
     const response = await POST(jsonRequest({ foo: "bar" }));
     expect(response.status).toBe(400);
+    expect(saveSharedBook).not.toHaveBeenCalled();
+  });
+
+  it("未登录时返回 401 而不是崩溃", async () => {
+    auth.mockResolvedValue(null);
+
+    const response = await POST(jsonRequest(validPayload));
+
+    expect(response.status).toBe(401);
     expect(saveSharedBook).not.toHaveBeenCalled();
   });
 });

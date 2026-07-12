@@ -6,6 +6,64 @@ import { galaxyZones } from "@/shared/mock/galaxy-data";
 import { GalaxyWorkspace } from "./galaxy-workspace";
 
 describe("GalaxyWorkspace", () => {
+  it("renders server-provided planets when initialPlanets is passed", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-self",
+            name: "服务器星球",
+            type: "self",
+            role: "私密核心",
+            visibility: "private",
+            theme: "极光家书",
+            position: { x: 40, y: 40 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 },
+            summary: "来自服务端的初始化星球。",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "进入服务器星球漫游" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入妈妈的星球漫游" })).not.toBeInTheDocument();
+  });
+
+  it("uses server-provided planets for the recommended route interaction", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-self",
+            name: "服务器星球",
+            type: "self",
+            role: "私密核心",
+            visibility: "private",
+            theme: "极光家书",
+            position: { x: 40, y: 40 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 },
+            summary: "来自服务端的初始化星球。",
+          },
+          {
+            id: "server-parent",
+            name: "母亲星球",
+            type: "parent",
+            role: "家庭可见",
+            visibility: "family",
+            theme: "暖橘星环",
+            position: { x: 55, y: 35 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 },
+            summary: "服务端提供的父母星球。",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "开始靠近" }));
+
+    expect(screen.getByRole("dialog", { name: "母亲星球漫游" })).toBeInTheDocument();
+  });
+
   it("renders the v7.3 galaxy shell, zones, route guide, and view controls", () => {
     render(<GalaxyWorkspace />);
 

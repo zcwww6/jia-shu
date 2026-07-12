@@ -273,7 +273,11 @@ const zoneContent: Record<
   },
 };
 
-export function GalaxyWorkspace() {
+export function GalaxyWorkspace({
+  initialPlanets = planets,
+}: {
+  initialPlanets?: Planet[];
+}) {
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
   const [activeRouteStep, setActiveRouteStep] = useState(0);
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
@@ -294,7 +298,7 @@ export function GalaxyWorkspace() {
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<GalaxyView>(initialView);
   const [isDragging, setIsDragging] = useState(false);
-  const [galaxyPlanets, setGalaxyPlanets] = useState<Planet[]>(planets);
+  const [galaxyPlanets, setGalaxyPlanets] = useState<Planet[]>(initialPlanets);
   const [hiddenPlanetIds, setHiddenPlanetIds] = useState<string[]>([]);
   const [galaxyLinks, setGalaxyLinks] = useState<PlanetLink[]>(planetLinks);
   const [visibleLinkKinds, setVisibleLinkKinds] = useState<PlanetLinkKind[]>([
@@ -346,6 +350,21 @@ export function GalaxyWorkspace() {
     () => galaxyPlanets.filter((planet) => hiddenPlanetIds.includes(planet.id)),
     [galaxyPlanets, hiddenPlanetIds],
   );
+  const anchorPlanetIds = useMemo(() => {
+    const selfPlanet = galaxyPlanets.find((planet) => planet.type === "self");
+    const parentPlanet = galaxyPlanets.find((planet) => planet.type === "parent");
+    const memorialPlanet = galaxyPlanets.find((planet) => planet.type === "memorial");
+    const publicPlanet = galaxyPlanets.find((planet) => planet.type === "public");
+    const firstPlanet = galaxyPlanets[0] ?? null;
+    const firstNonSelfPlanet = galaxyPlanets.find((planet) => planet.type !== "self") ?? null;
+
+    return {
+      self: selfPlanet?.id ?? firstPlanet?.id ?? null,
+      parent: parentPlanet?.id ?? firstNonSelfPlanet?.id ?? firstPlanet?.id ?? null,
+      memorial: memorialPlanet?.id ?? parentPlanet?.id ?? firstNonSelfPlanet?.id ?? firstPlanet?.id ?? null,
+      public: publicPlanet?.id ?? parentPlanet?.id ?? firstNonSelfPlanet?.id ?? firstPlanet?.id ?? null,
+    };
+  }, [galaxyPlanets]);
   const selectedPlanet = galaxyPlanets.find((planet) => planet.id === selectedPlanetId) ?? null;
   const roamingPlanet = galaxyPlanets.find((planet) => planet.id === roamingPlanetId) ?? null;
 
@@ -387,6 +406,19 @@ export function GalaxyWorkspace() {
     });
   }
 
+  function focusAnchorPlanet(planetId: string | null) {
+    if (!planetId) return;
+    focusPlanet(planetId);
+  }
+
+  function openAnchorPlanet(planetId: string | null) {
+    if (!planetId) return;
+    setSelectedPlanetId(null);
+    setClosingPlanetId(null);
+    setRoamingPlanetId(planetId);
+    setActivePanel(null);
+  }
+
   function runRouteStep(index: number) {
     const step = routeSteps[index];
     setActiveRouteStep(index);
@@ -395,9 +427,8 @@ export function GalaxyWorkspace() {
     setBookBeamPlanet(null);
 
     if (step.action === "planet") {
-      focusPlanet("mock-mom");
-      setRoamingPlanetId("mock-mom");
-      setActivePanel(null);
+      focusAnchorPlanet(anchorPlanetIds.parent);
+      openAnchorPlanet(anchorPlanetIds.parent);
       return;
     }
 
@@ -548,7 +579,9 @@ export function GalaxyWorkspace() {
     setBookBeamPlanet(null);
   }
 
-  function openSelectedPlanet(planetId: string) {
+  function openSelectedPlanet(planetId: string | null) {
+    if (!planetId) return;
+
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
     setRoamingPlanetId(planetId);
@@ -615,7 +648,7 @@ export function GalaxyWorkspace() {
       stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 },
       summary: "一颗刚加入星系的家庭星球，可继续编辑主题、权限和连接线。",
     };
-    const anchorPlanet = galaxyPlanets.find((planet) => planet.id === "mock-me") ?? galaxyPlanets[0];
+    const anchorPlanet = galaxyPlanets.find((planet) => planet.id === anchorPlanetIds.self) ?? galaxyPlanets[0];
     setGalaxyPlanets((current) => [...current, newPlanet]);
     if (anchorPlanet) {
       setGalaxyLinks((current) => [
@@ -848,7 +881,7 @@ export function GalaxyWorkspace() {
 
       <section
         className={`space interactive-space ${isDragging ? "dragging" : ""}`}
-        onDoubleClick={() => focusPlanet("mock-mom")}
+        onDoubleClick={() => focusAnchorPlanet(anchorPlanetIds.parent)}
         onPointerDown={(event) => {
           if (
             (event.target as HTMLElement).closest(
@@ -945,6 +978,7 @@ export function GalaxyWorkspace() {
               bookGenerated={bookGenerated}
               bookResult={bookResult}
               litMemories={litMemories}
+              anchorPlanetIds={anchorPlanetIds}
               onGenerateBook={() => {
                 void generateBookDraft();
               }}
@@ -1096,6 +1130,7 @@ export function GalaxyWorkspace() {
 
 function ZoneScene({
   activeZone,
+  anchorPlanetIds,
   bookGenerated,
   bookResult,
   litMemories,
@@ -1126,6 +1161,12 @@ function ZoneScene({
   onRenamePlanet,
 }: {
   activeZone: GalaxyZoneKey;
+  anchorPlanetIds: {
+    self: string | null;
+    parent: string | null;
+    memorial: string | null;
+    public: string | null;
+  };
   bookGenerated: boolean;
   bookResult: BookGenerateResponse | null;
   litMemories: MemoryStar[];
@@ -1133,7 +1174,7 @@ function ZoneScene({
   onGenerateBook: () => void;
   onGo: (zone: GalaxyZoneKey) => void;
   onOpenPanel: (key: PanelKey) => void;
-  onOpenPlanet: (planetId: string) => void;
+  onOpenPlanet: (planetId: string | null) => void;
   onSelectTheme: (theme: string) => void;
   onSelectPlanet: (planetId: string) => void;
   onToast: (message: string) => void;
@@ -1204,7 +1245,7 @@ function ZoneScene({
           className="ancestor memorial-planet has-ring"
           label="外婆的纪念星"
           left="27.5%"
-          onClick={() => onOpenPlanet("mock-grandma")}
+          onClick={() => onOpenPlanet(anchorPlanetIds.memorial)}
           top="37%"
         />
         <ScenePlanetButton
@@ -1220,7 +1261,7 @@ function ZoneScene({
           className="mom"
           label="妈妈"
           left="50%"
-          onClick={() => onOpenPlanet("mock-mom")}
+          onClick={() => onOpenPlanet(anchorPlanetIds.parent)}
           top="51.5%"
         />
         <ScenePlanetButton
@@ -1228,7 +1269,7 @@ function ZoneScene({
           className="me"
           label="我"
           left="50%"
-          onClick={() => onOpenPlanet("mock-me")}
+          onClick={() => onOpenPlanet(anchorPlanetIds.self)}
           top="77%"
         />
         <SparkButton
@@ -1308,7 +1349,7 @@ function ZoneScene({
           className="mom public-planet has-ring"
           label="妈妈的星球"
           left="50%"
-          onClick={() => onOpenPlanet("mock-mom")}
+          onClick={() => onOpenPlanet(anchorPlanetIds.parent)}
           top="50%"
         />
         <MemoryButton label="新家里的第一个除夕" left="50%" onClick={() => onOpenPanel("memory1")} top="25%" variant="coral" />
@@ -1346,7 +1387,7 @@ function ZoneScene({
           className="mom public-planet has-ring"
           label="妈妈的星球"
           left="28.5%"
-          onClick={() => onOpenPlanet("mock-mom")}
+          onClick={() => onOpenPlanet(anchorPlanetIds.parent)}
           top="50%"
         />
         <ScenePlanetButton
@@ -1354,7 +1395,7 @@ function ZoneScene({
           className="me private-planet"
           label="我的星球"
           left="71.5%"
-          onClick={() => onOpenPlanet("mock-me")}
+          onClick={() => onOpenPlanet(anchorPlanetIds.self)}
           top="50%"
         />
         <SparkButton label="2018 除夕共鸣星轨" left="50%" onClick={() => onOpenPanel("resonance")} top="45%" />

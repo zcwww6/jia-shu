@@ -1,0 +1,17 @@
+.git
+.github
+.worktrees
+.agents
+.claude
+.next
+node_modules
+coverage
+backups
+.local-data
+.env
+.env.*
+!.env.example
+!.env.docker.example
+*.log
+docs/superpowers
+历史资料
