@@ -8,6 +8,7 @@ import { getPrismaClient } from "@/server/db/client";
 
 export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   ...authConfig,
+  trustHost: env.AUTH_TRUST_HOST,
   adapter: PrismaAdapter(getPrismaClient()),
   providers: [
     Resend({

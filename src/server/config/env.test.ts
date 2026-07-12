@@ -29,7 +29,7 @@ describe("loadAppEnv", () => {
       DATABASE_URL: "postgresql://demo",
       AUTH_SECRET: "secret",
       AUTH_URL: "http://localhost",
-      AUTH_TRUST_HOST: "true",
+      AUTH_TRUST_HOST: "false",
       AUTH_RESEND_API_KEY: "re_test",
       AUTH_RESEND_FROM: "Jiashu <noreply@example.com>",
       OPENAI_API_KEY: "sk-demo",
@@ -39,7 +39,7 @@ describe("loadAppEnv", () => {
     expect(result.DATABASE_URL).toBe("postgresql://demo");
     expect(result.AUTH_SECRET).toBe("secret");
     expect(result.AUTH_URL).toBe("http://localhost");
-    expect(result.AUTH_TRUST_HOST).toBe(true);
+    expect(result.AUTH_TRUST_HOST).toBe(false);
     expect(result.AUTH_RESEND_API_KEY).toBe("re_test");
     expect(result.AUTH_RESEND_FROM).toBe("Jiashu <noreply@example.com>");
     expect(result.OPENAI_API_KEY).toBe("sk-demo");
@@ -49,7 +49,7 @@ describe("loadAppEnv", () => {
     process.env.DATABASE_URL = "postgresql://demo";
     process.env.AUTH_SECRET = "secret";
     process.env.AUTH_URL = "http://localhost";
-    process.env.AUTH_TRUST_HOST = "true";
+    process.env.AUTH_TRUST_HOST = "false";
     process.env.AUTH_RESEND_API_KEY = "re_test";
     process.env.AUTH_RESEND_FROM = "Jiashu <noreply@example.com>";
     process.env.OPENAI_API_KEY = "sk-demo";
@@ -58,7 +58,7 @@ describe("loadAppEnv", () => {
     expect(env.DATABASE_URL).toBe("postgresql://demo");
     expect(env.AUTH_SECRET).toBe("secret");
     expect(env.AUTH_URL).toBe("http://localhost");
-    expect(env.AUTH_TRUST_HOST).toBe(true);
+    expect(env.AUTH_TRUST_HOST).toBe(false);
     expect(env.AUTH_RESEND_API_KEY).toBe("re_test");
     expect(env.AUTH_RESEND_FROM).toBe("Jiashu <noreply@example.com>");
     expect(env.OPENAI_API_KEY).toBe("sk-demo");
@@ -77,6 +77,16 @@ describe("loadAppEnv", () => {
         AUTH_RESEND_FROM: "Jiashu <noreply@example.com>",
       }),
     ).toThrow("AUTH_URL");
+
+    expect(() =>
+      loadAppEnv({
+        DATABASE_URL: "postgresql://demo",
+        AUTH_SECRET: "secret",
+        AUTH_URL: "http://localhost",
+        AUTH_RESEND_API_KEY: "re_test",
+        AUTH_RESEND_FROM: "Jiashu <noreply@example.com>",
+      }),
+    ).toThrow("AUTH_TRUST_HOST");
     expect(() => env.DATABASE_URL).toThrow("DATABASE_URL");
   });
 
