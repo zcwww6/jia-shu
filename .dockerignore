@@ -13,6 +13,5 @@ backups
 !.env.example
 !.env.docker.example
 *.log
-logs
 docs/superpowers
 历史资料
