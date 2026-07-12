@@ -124,7 +124,7 @@ if ($LASTEXITCODE -ne 0) { throw '读取服务状态失败。' }
 
 如果构建、迁移或健康检查失败，先查看对应服务日志，不要删除数据卷。迁移失败时上述 `throw` 会阻止后续启动，避免应用在未知 schema 上继续写入。
 
-镜像使用固定版本标签，升级时继续使用 `docker compose ... build --pull` 拉取该固定标签的最新安全修复。每月至少检查一次这些固定镜像标签的上游安全公告和 CVE；确认兼容并完成备份后，再明确更新固定标签、重新构建并执行本节验证，不要改用浮动的 `latest` 标签。
+镜像使用固定版本标签；升级时继续使用 `docker compose ... build --pull` 刷新当前固定标签对应的镜像层，但该命令不会把 Compose 或 Dockerfile 中的标签升级到更新的补丁版本。每月至少检查一次这些固定镜像标签的上游安全公告和 CVE；确认兼容并完成备份后，再明确更新固定标签、重新构建并执行本节验证，不要改用浮动的 `latest` 标签。
 
 ### 数据库备份
 
@@ -186,14 +186,14 @@ if ($LASTEXITCODE -ne 0) { throw '所选恢复归档的完整解压读取失败�
 ```powershell
 docker compose --env-file .env.docker stop app nginx
 if ($LASTEXITCODE -ne 0) { throw '停止 app/nginx 失败；不要继续恢复。' }
-$activeConnectionText = docker compose --env-file .env.docker exec -T postgres psql -U "$postgresUser" -d postgres -tAc "SELECT count(*) FROM pg_stat_activity WHERE datname = '$postgresDbSqlLiteral';"
+$activeConnectionText = docker compose --env-file .env.docker exec -T postgres psql -U "$postgresUser" -d template1 -tAc "SELECT count(*) FROM pg_stat_activity WHERE datname = '$postgresDbSqlLiteral';"
 if ($LASTEXITCODE -ne 0) { throw '检查数据库活动连接失败；app/nginx 保持停止。' }
 [int]$activeConnectionCount = 0
 if (-not [int]::TryParse(($activeConnectionText -join '').Trim(), [ref]$activeConnectionCount)) { throw '无法解析数据库活动连接数；app/nginx 保持停止。' }
 if ($activeConnectionCount -gt 0) { throw "仍有 $activeConnectionCount 个客户端连接 $postgresDb；关闭所有宿主机写入者后重试。" }
-docker compose --env-file .env.docker exec -T postgres dropdb -U "$postgresUser" --if-exists --force "$postgresDb"
+docker compose --env-file .env.docker exec -T postgres dropdb -U "$postgresUser" --maintenance-db=template1 --if-exists --force "$postgresDb"
 if ($LASTEXITCODE -ne 0) { throw '删除目标数据库失败；app/nginx 保持停止。' }
-docker compose --env-file .env.docker exec -T postgres createdb -U "$postgresUser" -O "$postgresUser" "$postgresDb"
+docker compose --env-file .env.docker exec -T postgres createdb -U "$postgresUser" --maintenance-db=template1 -O "$postgresUser" "$postgresDb"
 if ($LASTEXITCODE -ne 0) { throw '重建空数据库失败；app/nginx 保持停止。' }
 docker compose --env-file .env.docker exec -T postgres pg_restore -U "$postgresUser" -d "$postgresDb" --exit-on-error --single-transaction --no-owner "/backups/$backupName"
 if ($LASTEXITCODE -ne 0) { throw 'pg_restore 失败；app/nginx 保持停止，请从已验证备份重新恢复。' }
