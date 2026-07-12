@@ -203,7 +203,7 @@ DATABASE_URL=postgresql://jiashu:<local-password>@postgres:5432/jiashu
 - `OPENAI_MODEL`
 - `OPENAI_BASE_URL`
 
-仅本机访问时 `AUTH_URL=http://localhost`。局域网访问时必须换成其他设备可达的固定 IP 或主机名，否则邮件中的 Magic Link 无法从其他设备打开。
+当前 Compose 明确将 Nginx 绑定到 `127.0.0.1:80:80`，因此只支持本机访问，并使用 `AUTH_URL=http://localhost`。仅修改 `AUTH_URL` 绝不会启用局域网访问。局域网或其他远程访问需要另行批准的设计，统一处理 Nginx bind override、TLS、宿主机防火墙和认证回调地址；这些内容不属于本设计范围。
 
 密钥只在容器运行时注入，不作为 Docker build argument，不复制进镜像，也不提交到 Git。
 

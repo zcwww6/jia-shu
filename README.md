@@ -105,6 +105,58 @@ docker compose --env-file .env.docker down
 
 `stop` 保留容器，`down` 删除容器和网络但保留命名卷。**严禁把 `docker compose down -v` 当作日常命令：`-v` 会删除 PostgreSQL 数据卷并造成数据丢失。** 只有确认已有可恢复备份、并明确要销毁本地数据时才可使用它。
 
+### 已有数据库采用 baseline
+
+本节只适用于这样的既有数据库或命名卷：数据库中已经存在当前 schema 对象，但 `_prisma_migrations` 尚未记录 `20260712000000_auth_persistence_baseline`。全新命名卷不执行本节，直接按“首次启动与检查”让正常迁移链初始化数据库。
+
+开始前停止所有写入者：在运行 `corepack pnpm dev` 的宿主机 PowerShell 中按 `Ctrl+C`，关闭 Prisma Studio、数据库 GUI、`psql` 和其他客户端，并停止 app、nginx 和 migrate 容器。只启动 PostgreSQL，不要启动完整的 app/migrate 依赖链：
+
+```powershell
+docker compose --env-file .env.docker stop app nginx migrate
+if ($LASTEXITCODE -ne 0) { throw '停止 app/nginx/migrate 失败；不要继续采用 baseline。' }
+docker compose --env-file .env.docker up -d postgres
+if ($LASTEXITCODE -ne 0) { throw '仅启动 PostgreSQL 失败；不要继续采用 baseline。' }
+```
+
+接着必须先完整执行并验证下文“数据库备份”的加固流程，确认 custom format 临时归档已通过目录校验和完整解压读取、已提升为正式时间戳文件，并已生成符合要求的异地加密副本。备份未完成或未通过任一校验时，不得继续。
+
+保持所有写入者停止，在同一个 PowerShell 中解析 `.env.docker` 并验证容器数据库地址。不要输出 `$databaseUrl`；后续 `docker compose run` 会像现有 Compose 流程一样把同一个 `DATABASE_URL` 注入 `migrate` 容器：
+
+```powershell
+$dockerEnv = ConvertFrom-StringData (Get-Content .env.docker -Raw)
+$databaseUrl = $dockerEnv.DATABASE_URL
+if ([string]::IsNullOrWhiteSpace($databaseUrl)) { throw '.env.docker 中的 DATABASE_URL 不能为空。' }
+if ($databaseUrl -notmatch '@postgres(?::5432)?/') { throw 'DATABASE_URL 必须使用容器主机名 postgres；不要继续采用 baseline。' }
+
+docker compose --env-file .env.docker run --rm migrate pnpm prisma migrate status
+$statusExitCode = $LASTEXITCODE
+if ($statusExitCode -ne 0 -and $statusExitCode -ne 1) { throw "读取迁移状态失败，退出码：$statusExitCode" }
+```
+
+人工核对状态输出：本流程只允许 baseline 尚未应用，不能存在失败迁移、迁移历史分叉或其他意外状态。然后执行精确 drift gate，并立即捕获退出码：
+
+```powershell
+docker compose --env-file .env.docker run --rm migrate pnpm prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+$driftExitCode = $LASTEXITCODE
+if ($driftExitCode -eq 2) { throw '检测到 schema drift；禁止 resolve 或 deploy。请先在数据库副本上生成并评审纠正迁移。' }
+if ($driftExitCode -ne 0) { throw "schema drift 检查执行失败，退出码：$driftExitCode" }
+```
+
+退出码 `0` 才表示现有数据库与 `prisma/schema.prisma` 精确匹配。退出码 `2` 表示存在 drift，必须停止，不能执行 `resolve` 或 `deploy`；其他非零退出码表示检查错误。drift 必须先在数据库副本上单独生成、测试并评审纠正迁移，严禁对原数据库使用 `prisma db push`，也严禁在未确认精确匹配时盲目 `resolve`。
+
+只有 drift gate 返回 `0`，才可依次记录 baseline、部署后续迁移并启动应用：
+
+```powershell
+docker compose --env-file .env.docker run --rm migrate pnpm prisma migrate resolve --applied 20260712000000_auth_persistence_baseline
+if ($LASTEXITCODE -ne 0) { throw '记录 baseline 失败；app/nginx 保持停止。' }
+docker compose --env-file .env.docker run --rm migrate pnpm prisma migrate deploy
+if ($LASTEXITCODE -ne 0) { throw '部署后续迁移失败；app/nginx 保持停止。' }
+docker compose --env-file .env.docker up -d app nginx
+if ($LASTEXITCODE -ne 0) { throw 'app/nginx 启动失败，请检查服务日志。' }
+```
+
+`migrate resolve --applied` 只在 Prisma 迁移历史中记录 baseline 已应用，不会执行该 migration 的 SQL；因此前面的精确 drift gate 和已验证备份不可省略。
+
 ### 升级
 
 升级前先按下一节生成并验证新备份。备份成功后构建镜像；只有构建成功才停止应用并执行迁移，迁移成功后才启动新版本。执行下列离线升级命令前，还必须在宿主机运行 `corepack pnpm dev` 的 PowerShell 中按 `Ctrl+C`，并关闭 Prisma Studio、数据库 GUI、`psql` 等数据库客户端；在 `docker compose ... up -d` 成功前不要重新启动这些宿主机进程：
