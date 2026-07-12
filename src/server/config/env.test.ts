@@ -66,6 +66,24 @@ describe("loadAppEnv", () => {
     expect(env.OPENAI_BASE_URL).toBe("https://api.openai.com/v1");
   });
 
+  it("reads true AUTH_TRUST_HOST through the loader and lazy getter", async () => {
+    const { env, loadAppEnv } = await import("./env");
+
+    const result = loadAppEnv({
+      DATABASE_URL: "postgresql://demo",
+      AUTH_SECRET: "secret",
+      AUTH_URL: "http://localhost",
+      AUTH_TRUST_HOST: "true",
+      AUTH_RESEND_API_KEY: "re_test",
+      AUTH_RESEND_FROM: "Jiashu <noreply@example.com>",
+    });
+
+    expect(result.AUTH_TRUST_HOST).toBe(true);
+
+    process.env.AUTH_TRUST_HOST = "true";
+    expect(env.AUTH_TRUST_HOST).toBe(true);
+  });
+
   it("throws when required settings are missing", async () => {
     const { env, loadAppEnv } = await import("./env");
 
