@@ -107,7 +107,7 @@ docker compose --env-file .env.docker down
 
 ### 升级
 
-升级前先按下一节生成并验证新备份。备份成功后构建镜像；只有构建成功才停止应用并执行迁移，迁移成功后才启动新版本：
+升级前先按下一节生成并验证新备份。备份成功后构建镜像；只有构建成功才停止应用并执行迁移，迁移成功后才启动新版本。执行下列离线升级命令前，还必须在宿主机运行 `corepack pnpm dev` 的 PowerShell 中按 `Ctrl+C`，并关闭 Prisma Studio、数据库 GUI、`psql` 等数据库客户端；在 `docker compose ... up -d` 成功前不要重新启动这些宿主机进程：
 
 ```powershell
 docker compose --env-file .env.docker build --pull
@@ -155,14 +155,22 @@ Get-Item $finalBackupPath
 
 恢复会完全替换当前数据库。**开始前先按上一节为当前状态生成一份新的、已通过目录校验和完整解压读取的备份，并复制到另一块磁盘或 NAS。** 然后明确选择要恢复的时间戳文件；不要使用 `*.tmp`，也不要复用刚创建的当前状态备份文件名。
 
-执行恢复块之前，先在运行 `corepack pnpm dev` 的宿主机 PowerShell 中按 `Ctrl+C` 停止开发服务器，并关闭 Prisma Studio、数据库 GUI、`psql` 等所有数据库客户端。在恢复和迁移全部成功前，不要重新启动这些宿主机写入者。
+先在同一个 PowerShell 中运行以下归档检查。此阶段不会停止服务或修改数据库：
 
 ```powershell
 $backupName = 'jiashu-20260712-210000.dump'
 $restorePath = Join-Path .\backups $backupName
 if ($backupName -notmatch '^jiashu-\d{8}-\d{6}\.dump$' -or -not (Test-Path $restorePath)) { throw "恢复文件不存在或不是正式备份：$restorePath" }
 Get-Item $restorePath
+docker compose --env-file .env.docker exec -T postgres pg_restore --list "/backups/$backupName" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw '所选恢复归档的目录校验失败；数据库未修改。' }
+docker compose --env-file .env.docker exec -T postgres pg_restore --exit-on-error --file=/dev/null "/backups/$backupName" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw '所选恢复归档的完整解压读取失败；数据库未修改。' }
+```
 
+只有上述两项校验都成功后，才在运行 `corepack pnpm dev` 的宿主机 PowerShell 中按 `Ctrl+C` 停止开发服务器，并关闭 Prisma Studio、数据库 GUI、`psql` 等所有数据库客户端。保持使用同一个 PowerShell 执行下列恢复命令；在恢复和迁移全部成功前，不要重新启动这些宿主机写入者：
+
+```powershell
 docker compose --env-file .env.docker stop app nginx
 if ($LASTEXITCODE -ne 0) { throw '停止 app/nginx 失败；不要继续恢复。' }
 $activeConnectionText = docker compose --env-file .env.docker exec -T postgres psql -U jiashu -d postgres -tAc "SELECT count(*) FROM pg_stat_activity WHERE datname = 'jiashu';"
