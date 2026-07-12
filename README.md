@@ -134,13 +134,17 @@ $backupStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $backupName = "jiashu-$backupStamp.dump"
 $tempBackupName = "$backupName.tmp"
 $finalBackupPath = Join-Path .\backups $backupName
+$tempContainerPath = "/backups/$tempBackupName"
+$finalContainerPath = "/backups/$backupName"
 if (Test-Path $finalBackupPath) { throw "备份文件已存在，拒绝覆盖：$finalBackupPath" }
 
-docker compose --env-file .env.docker exec -T postgres pg_dump -U jiashu -d jiashu -Fc -f "/backups/$tempBackupName"
+docker compose --env-file .env.docker exec -T postgres pg_dump -U jiashu -d jiashu -Fc -f "$tempContainerPath"
 if ($LASTEXITCODE -ne 0) { throw 'pg_dump 失败；临时文件不会转为正式备份。' }
-docker compose --env-file .env.docker exec -T postgres pg_restore --list "/backups/$tempBackupName" | Out-Null
+docker compose --env-file .env.docker exec -T postgres pg_restore --list "$tempContainerPath" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw '备份归档校验失败；临时文件不会转为正式备份。' }
-docker compose --env-file .env.docker exec -T postgres mv "/backups/$tempBackupName" "/backups/$backupName"
+docker compose --env-file .env.docker exec -T postgres pg_restore --exit-on-error --file=/dev/null "$tempContainerPath" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw '备份归档完整解压读取失败；临时文件不会转为正式备份。' }
+docker compose --env-file .env.docker exec -T postgres mv "$tempContainerPath" "$finalContainerPath"
 if ($LASTEXITCODE -ne 0) { throw '备份归档改名失败。' }
 Get-Item $finalBackupPath
 ```
@@ -149,7 +153,9 @@ Get-Item $finalBackupPath
 
 ### 数据库恢复
 
-恢复会完全替换当前数据库。**开始前先按上一节为当前状态生成一份新的、已通过 `pg_restore --list` 校验的备份，并复制到另一块磁盘或 NAS。** 然后明确选择要恢复的时间戳文件；不要使用 `*.tmp`，也不要复用刚创建的当前状态备份文件名。
+恢复会完全替换当前数据库。**开始前先按上一节为当前状态生成一份新的、已通过目录校验和完整解压读取的备份，并复制到另一块磁盘或 NAS。** 然后明确选择要恢复的时间戳文件；不要使用 `*.tmp`，也不要复用刚创建的当前状态备份文件名。
+
+执行恢复块之前，先在运行 `corepack pnpm dev` 的宿主机 PowerShell 中按 `Ctrl+C` 停止开发服务器，并关闭 Prisma Studio、数据库 GUI、`psql` 等所有数据库客户端。在恢复和迁移全部成功前，不要重新启动这些宿主机写入者。
 
 ```powershell
 $backupName = 'jiashu-20260712-210000.dump'
@@ -159,6 +165,11 @@ Get-Item $restorePath
 
 docker compose --env-file .env.docker stop app nginx
 if ($LASTEXITCODE -ne 0) { throw '停止 app/nginx 失败；不要继续恢复。' }
+$activeConnectionText = docker compose --env-file .env.docker exec -T postgres psql -U jiashu -d postgres -tAc "SELECT count(*) FROM pg_stat_activity WHERE datname = 'jiashu';"
+if ($LASTEXITCODE -ne 0) { throw '检查数据库活动连接失败；app/nginx 保持停止。' }
+[int]$activeConnectionCount = 0
+if (-not [int]::TryParse(($activeConnectionText -join '').Trim(), [ref]$activeConnectionCount)) { throw '无法解析数据库活动连接数；app/nginx 保持停止。' }
+if ($activeConnectionCount -gt 0) { throw "仍有 $activeConnectionCount 个客户端连接 jiashu；关闭所有宿主机写入者后重试。" }
 docker compose --env-file .env.docker exec -T postgres dropdb -U jiashu --if-exists --force jiashu
 if ($LASTEXITCODE -ne 0) { throw '删除目标数据库失败；app/nginx 保持停止。' }
 docker compose --env-file .env.docker exec -T postgres createdb -U jiashu -O jiashu jiashu
@@ -193,6 +204,11 @@ function ConvertTo-DotEnvValue {
   return '"' + $escaped + '"'
 }
 
+function Assert-NativeSuccess {
+  param([string]$Action, [int]$ExitCode)
+  if ($ExitCode -ne 0) { throw "$Action 失败（退出码 $ExitCode）。" }
+}
+
 $localEnv = @(
   "DATABASE_URL=$(ConvertTo-DotEnvValue $hostDatabaseUrl)"
   "AUTH_SECRET=$(ConvertTo-DotEnvValue $dockerEnv.AUTH_SECRET)"
@@ -208,10 +224,14 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllLines((Join-Path (Get-Location) '.env.local'), $localEnv, $utf8NoBom)
 
 docker compose --env-file .env.docker -f compose.yaml -f compose.dev.yaml up -d postgres
+Assert-NativeSuccess '启动开发数据库' $LASTEXITCODE
 corepack pnpm install
+Assert-NativeSuccess '安装依赖' $LASTEXITCODE
 corepack pnpm prisma generate
+Assert-NativeSuccess '生成 Prisma Client' $LASTEXITCODE
 $env:DATABASE_URL = $hostDatabaseUrl
 corepack pnpm prisma migrate deploy
+Assert-NativeSuccess '执行数据库迁移' $LASTEXITCODE
 corepack pnpm dev
 ```
 
