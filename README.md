@@ -18,7 +18,7 @@ AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 P
 - `test`：测试验收分支。
 - `feature/*`：临时功能开发分支，从 `develop` 切出，完成后合回 `develop`。
 
-当前工程化首阶段分支：`feature/bootstrap-next-app`。
+当前集成主线为 `develop`。项目能力、真实/Mock 边界和后续顺序以 [`产品开发文档/当前项目状态.md`](产品开发文档/当前项目状态.md) 为准。
 
 ## 技术栈
 
@@ -28,7 +28,7 @@ AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 P
 - shadcn/ui 风格基础组件
 - Framer Motion
 - Vitest + Testing Library
-- PostgreSQL + Prisma 持久化；OpenAI 能力按需启用
+- PostgreSQL + Prisma 持久化；支持按需接入真实 OpenAI，未启用时回落 Mock
 
 ## 本地开发
 
