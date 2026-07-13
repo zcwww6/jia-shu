@@ -64,6 +64,14 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
       expect(screen.getByRole("button", { name: "缝合测试记忆星" })).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "新点亮：缝合测试记忆星" }),
+      ).toBeInTheDocument();
+    });
+
     // 点亮的记忆写入 localStorage，供刷新后回显。
     expect(window.localStorage.getItem("jiashu-galaxy-extract")).toContain("memory-live-1");
     expect(window.localStorage.getItem("jiashu-galaxy-lit-memories")).toContain("memory-live-1");

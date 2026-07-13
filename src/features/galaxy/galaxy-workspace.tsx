@@ -1526,6 +1526,17 @@ function ZoneScene({
         />
       ))}
 
+      {litMemories.map((memory, index) => (
+        <MemoryButton
+          key={`galaxy-${memory.id}`}
+          label={`新点亮：${memory.title}`}
+          left={`${36 + (index % 4) * 9}%`}
+          onClick={() => onOpenPanel("memory1")}
+          top={`${28 + Math.floor(index / 4) * 10}%`}
+          variant="coral"
+        />
+      ))}
+
       <MemoryButton label="点开春节记忆星" left="43%" onClick={() => onOpenPanel("memory1")} top="32%" variant="coral" />
       <MemoryButton label="点亮云南旅行记忆星" left="74%" onClick={() => onOpenPanel("memory3")} top="24%" variant="blue" />
       <SparkButton label="推荐航线：共鸣星轨" left="50%" onClick={() => onGo("resonance")} top="25%" />
