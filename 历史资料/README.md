@@ -6,8 +6,7 @@
 
 ## 历史参考文档（非当前工程/部署依据）
 
-- 历史运行代码入口：`src/features/galaxy`、`src/features/demo-loop`、`src/server/ai`
-- 历史主对照 demo：`前端原型/jiashu_planet_galaxy_v7_3_planet_roaming_fixed.html`
+- 历史资料引用的原型/代码路径：`src/features/galaxy`、`src/features/demo-loop`、`src/server/ai`；`前端原型/jiashu_planet_galaxy_v7_3_planet_roaming_fixed.html`
 - 历史参考文档（仅供追溯，不作为当前指导）：
   - `产品设计文档/设计文档-第一版.md`
   - `产品设计文档/前端设计文档1.md`
