@@ -39,4 +39,33 @@ describe("galaxy mock data", () => {
     expect(book?.sourceMemoryIds).toContain("memory-2018-mom");
     expect(book?.sourceMemoryIds).toContain("memory-2018-me");
   });
+
+  it("keeps the inheritance and growth demo fixtures referentially complete", () => {
+    const memoryIds = new Set(memoryStars.map((memory) => memory.id));
+    const planetIds = new Set(planets.map((planet) => planet.id));
+    const expectedMemoryIds = [
+      "memory-1998-mom",
+      "memory-2008-grandma",
+      "memory-2008-mom-kitchen",
+      "memory-2022-child",
+      "memory-2022-me-child",
+    ];
+
+    expect(expectedMemoryIds.every((memoryId) => memoryIds.has(memoryId))).toBe(true);
+    expect(memoryStars.every((memory) => planetIds.has(memory.planetId))).toBe(true);
+
+    const inheritanceTrack = resonanceTracks.find(
+      (track) => track.id === "resonance-2008-kitchen",
+    );
+    const growthTrack = resonanceTracks.find(
+      (track) => track.id === "resonance-2022-child-stage",
+    );
+    const inheritanceBook = bookDrafts.find(
+      (draft) => draft.id === "book-2008-inheritance",
+    );
+
+    expect(inheritanceTrack?.sourceMemoryIds.every((id) => memoryIds.has(id))).toBe(true);
+    expect(growthTrack?.sourceMemoryIds.every((id) => memoryIds.has(id))).toBe(true);
+    expect(inheritanceBook?.sourceMemoryIds.every((id) => memoryIds.has(id))).toBe(true);
+  });
 });
