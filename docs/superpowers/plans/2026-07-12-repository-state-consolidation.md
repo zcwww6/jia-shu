@@ -506,7 +506,11 @@ Run:
 $currentFiles = @('README.md', '产品开发文档\当前项目状态.md', 'docs\superpowers\specs\2026-07-12-local-docker-deployment-design.md')
 $forbidden = '推荐部署到\s*\*\*Vercel|KV_REST_API|Upstash|本地 \.local-data/shared-books\.json|国内云厂商云服务器.*当前|云 RDS.*当前'
 $matches = Select-String -Path $currentFiles -Pattern $forbidden
-if ($matches) { $matches | Format-Table; throw 'Current documentation contains superseded deployment guidance.' }
+# “不再把云服务器或云 RDS 描述为当前部署方向”是否定旧方案，不是把旧方案当作当前部署建议。
+$actionableMatches = @($matches | Where-Object {
+  $_.Line -notmatch '不再把云服务器或云 RDS 描述为当前部署方向'
+})
+if ($actionableMatches.Count -gt 0) { $actionableMatches | Format-Table; throw 'Current documentation contains superseded deployment guidance.' }
 
 $historyBanner = Select-String -Path '产品开发文档\2026-07-04-当前进展快照.md' -Pattern '历史快照：已被替代'
 $dockerStatus = Select-String -Path 'docs\superpowers\specs\2026-07-12-local-docker-deployment-design.md' -Pattern '基础设施实施完成；真实 Resend 登录与认证态业务验收待办'
