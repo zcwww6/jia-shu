@@ -148,7 +148,7 @@ Git 分支、worktree、stash 的删除属于验证后的仓库维护动作，�
 - lint 通过；
 - Next.js 生产构建通过；
 - `docker compose --env-file .env.docker config --quiet` 通过；
-- PostgreSQL、App、Nginx healthy，live、ready 和首页返回 200；
+- PostgreSQL、App、Nginx healthy；live、ready 原始响应为 200；未认证根路径以 307 跳转至 `/sign-in`，跟随重定向后最终页面为 200；
 - 现行文档对本地 Docker、PostgreSQL、Auth.js、Resend 和 Mock 边界描述一致；
 - 当前文档不把 Vercel、KV、本地 JSON、云服务器或云 RDS 描述为现行方案；
 - 历史快照有明确历史标识和当前状态链接；
