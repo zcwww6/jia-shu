@@ -1,12 +1,14 @@
 # 历史资料
 
+> **历史资料索引（非当前工程/部署依据）。** 本目录中的历史资料、原型和带旧部署策略的文档均不代表当前工程或部署方案。当前唯一状态入口见 [`产品开发文档/当前项目状态.md`](../产品开发文档/当前项目状态.md)。
+
 这个目录用于归档不再作为当前主线依据的原型、阶段性进展材料和杂项附件。
 
-## 当前主线
+## 历史参考文档（非当前工程/部署依据）
 
-- 当前运行主线代码：`src/features/galaxy`、`src/features/demo-loop`、`src/server/ai`
-- 当前主对照 demo：`前端原型/jiashu_planet_galaxy_v7_3_planet_roaming_fixed.html`
-- 当前核心文档：
+- 历史运行代码入口：`src/features/galaxy`、`src/features/demo-loop`、`src/server/ai`
+- 历史主对照 demo：`前端原型/jiashu_planet_galaxy_v7_3_planet_roaming_fixed.html`
+- 历史参考文档（仅供追溯，不作为当前指导）：
   - `产品设计文档/设计文档-第一版.md`
   - `产品设计文档/前端设计文档1.md`
   - `产品开发文档/开发方案.md`

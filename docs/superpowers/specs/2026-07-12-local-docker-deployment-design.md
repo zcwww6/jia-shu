@@ -243,12 +243,15 @@ Named volume 只解决容器重建时的数据保留，不等同于备份。
 
 ### 10.2 恢复
 
-1. 停止 App 写入。
-2. 备份当前数据库。
-3. 使用 `pg_restore --clean --if-exists --no-owner` 恢复指定文件。
-4. 执行 `prisma migrate deploy`。
-5. 启动 App 并验证 ready。
-6. 验证登录、星系、发布和跨浏览器分享。
+恢复的具体命令以 [README 的“数据库恢复”](../../../README.md#数据库恢复) 为权威操作手册，避免在本设计中维护第二套破坏性命令源。按该手册的安全序列执行：
+
+1. 验证所选正式备份可读取且完整。
+2. 停止所有写入者、App 和 Nginx。
+3. 检查目标数据库的活动连接。
+4. 通过 `template1` 使用 `dropdb`/`createdb` 重建目标数据库。
+5. 使用 `pg_restore --exit-on-error --single-transaction --no-owner` 恢复备份。
+6. 执行 `prisma migrate deploy`。
+7. 启动服务并验证 ready、登录、星系、发布和跨浏览器分享。
 
 备份和恢复命令必须在正式交付前完成一次真实演练。
 
