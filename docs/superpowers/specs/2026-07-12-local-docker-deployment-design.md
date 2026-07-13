@@ -2,7 +2,7 @@
 
 **日期**：2026-07-12
 
-**状态**：已批准，实施中
+**状态**：基础设施实施完成；真实 Resend 登录与认证态业务验收待办
 
 ## 1. 目标
 
@@ -22,9 +22,9 @@
 - 不要求 AI 模型和邮件系统离线运行。
 - 不在本阶段引入 Mailpit、Nodemailer 或新的认证 Provider。
 
-## 3. 当前基线
+## 3. 设计时基线
 
-设计基线为分支 `feature/launch-foundation-phase1-auth-persistence` 的提交 `07950a0`。该基线已经包含：
+以下内容记录 2026-07-12 的设计时基线，不代表当前仓库状态。设计基线为分支 `feature/launch-foundation-phase1-auth-persistence` 的提交 `07950a0`。该基线已经包含：
 
 - Next.js 16 App Router 应用；
 - Auth.js + Resend Magic Link；
@@ -34,7 +34,7 @@
 - 19 个测试文件、68 个测试；
 - 通过 lint 和生产构建的历史验证。
 
-当前缺失：
+设计时缺失（现已实施）：
 
 - Prisma baseline migration；
 - Dockerfile、Compose 和 `.dockerignore`；
@@ -243,12 +243,15 @@ Named volume 只解决容器重建时的数据保留，不等同于备份。
 
 ### 10.2 恢复
 
-1. 停止 App 写入。
-2. 备份当前数据库。
-3. 使用 `pg_restore --clean --if-exists --no-owner` 恢复指定文件。
-4. 执行 `prisma migrate deploy`。
-5. 启动 App 并验证 ready。
-6. 验证登录、星系、发布和跨浏览器分享。
+恢复的具体命令以 [README 的“数据库恢复”](../../../README.md#数据库恢复) 为权威操作手册，避免在本设计中维护第二套破坏性命令源。按该手册的安全序列执行：
+
+1. 验证所选正式备份可读取且完整。
+2. 停止所有写入者、App 和 Nginx。
+3. 检查目标数据库的活动连接。
+4. 通过 `template1` 使用 `dropdb`/`createdb` 重建目标数据库。
+5. 使用 `pg_restore --exit-on-error --single-transaction --no-owner` 恢复备份。
+6. 执行 `prisma migrate deploy`。
+7. 启动服务并验证 ready、登录、星系、发布和跨浏览器分享。
 
 备份和恢复命令必须在正式交付前完成一次真实演练。
 

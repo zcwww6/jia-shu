@@ -6,9 +6,7 @@ AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 P
 
 - 当前主对照 demo：`前端原型/jiashu_planet_galaxy_v7_3_planet_roaming_fixed.html`
 - 当前核心文档：
-  - `产品设计文档/设计文档-第一版.md`
-  - `产品设计文档/前端设计文档1.md`
-  - `产品开发文档/开发方案.md`
+  - [`产品开发文档/当前项目状态.md`](产品开发文档/当前项目状态.md)：工程、部署、能力和后续工作的唯一现状入口
 - 历史原型、阶段性进展材料和杂项附件已归档到 `历史资料/`
 
 ## 分支模型
@@ -18,7 +16,7 @@ AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 P
 - `test`：测试验收分支。
 - `feature/*`：临时功能开发分支，从 `develop` 切出，完成后合回 `develop`。
 
-当前工程化首阶段分支：`feature/bootstrap-next-app`。
+当前集成主线为 `develop`。项目能力、真实/Mock 边界和后续顺序以 [`产品开发文档/当前项目状态.md`](产品开发文档/当前项目状态.md) 为准。
 
 ## 技术栈
 
@@ -28,7 +26,7 @@ AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 P
 - shadcn/ui 风格基础组件
 - Framer Motion
 - Vitest + Testing Library
-- PostgreSQL + Prisma 持久化；OpenAI 能力按需启用
+- PostgreSQL + Prisma 持久化；支持按需接入真实 OpenAI，未启用时回落 Mock
 
 ## 本地开发
 
@@ -257,7 +255,7 @@ docker compose --env-file .env.docker ps
 if ($LASTEXITCODE -ne 0) { throw '读取服务状态失败。' }
 ```
 
-每个原生命令都在成功后才继续；任何 `throw` 都会阻止启动应用。恢复后检查 <http://localhost/api/health/ready>，并实际验证邮件登录、进入星系、发布家书和打开分享链接。若恢复失败，保持应用停止，先排查命令输出，不要继续写入数据库。恢复流程通过重建空库避免在部分已有对象上使用 `--clean`。
+每个原生命令都在成功后才继续；任何 `throw` 都会阻止启动应用。恢复后检查 <http://localhost/api/health/ready>，并实际验证邮件登录、进入星系、发布家书和打开分享链接。若恢复失败，保持应用停止，先排查命令输出，不要继续写入数据库。恢复流程通过重建空库避免在部分已有对象上使用破坏性清理选项。
 
 ### 源码开发
 
