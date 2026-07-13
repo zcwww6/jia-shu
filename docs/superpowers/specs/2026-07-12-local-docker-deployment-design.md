@@ -22,9 +22,9 @@
 - 不要求 AI 模型和邮件系统离线运行。
 - 不在本阶段引入 Mailpit、Nodemailer 或新的认证 Provider。
 
-## 3. 当前基线
+## 3. 设计时基线
 
-设计基线为分支 `feature/launch-foundation-phase1-auth-persistence` 的提交 `07950a0`。该基线已经包含：
+以下内容记录 2026-07-12 的设计时基线，不代表当前仓库状态。设计基线为分支 `feature/launch-foundation-phase1-auth-persistence` 的提交 `07950a0`。该基线已经包含：
 
 - Next.js 16 App Router 应用；
 - Auth.js + Resend Magic Link；
@@ -34,7 +34,7 @@
 - 19 个测试文件、68 个测试；
 - 通过 lint 和生产构建的历史验证。
 
-当前缺失：
+设计时缺失（现已实施）：
 
 - Prisma baseline migration；
 - Dockerfile、Compose 和 `.dockerignore`；
