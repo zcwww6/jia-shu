@@ -571,7 +571,7 @@ if ($live.StatusCode -ne 200 -or $ready.StatusCode -ne 200 -or $root.StatusCode 
 }
 ```
 
-Expected: PostgreSQL, App, and Nginx are healthy; all three HTTP responses are 200.
+Expected: PostgreSQL, App, and Nginx are healthy; live and ready return raw 200. An unauthenticated root request initially returns 307 to `/sign-in`; `Invoke-WebRequest` follows redirects by default, so `$root.StatusCode` is the final page's 200.
 
 - [ ] **Step 3: Compare the committed destination with root work and stash**
 
