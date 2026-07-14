@@ -22,10 +22,11 @@ const galaxyLitMemoriesKey = "jiashu-galaxy-lit-memories";
 
 function readJson<T>(key: string): T | null {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(key);
-  if (!raw) return null;
 
   try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+
     return JSON.parse(raw) as T;
   } catch {
     return null;
@@ -104,7 +105,8 @@ export function writeGalaxySharePayload(value: ShareConfirmationPayload) {
 }
 
 export function readLitMemories() {
-  return readJson<MemoryStar[]>(galaxyLitMemoriesKey) ?? [];
+  const memories = readJson<MemoryStar[]>(galaxyLitMemoriesKey);
+  return Array.isArray(memories) ? memories : [];
 }
 
 export function writeLitMemories(value: MemoryStar[]) {
