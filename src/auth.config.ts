@@ -9,6 +9,9 @@ export const authConfig = {
     signIn: "/sign-in",
   },
   providers: [],
+  session: {
+    strategy: "jwt",
+  },
   callbacks: {
     authorized({ auth, request }) {
       const pathname = request.nextUrl.pathname;

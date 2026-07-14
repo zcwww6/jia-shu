@@ -37,7 +37,13 @@ describe("primary auth configuration", () => {
 
     await import("./auth");
 
-    const configFactory = nextAuth.mock.calls[0]?.[0] as () => { trustHost?: boolean };
-    expect(configFactory().trustHost).toBe(false);
+    const configFactory = nextAuth.mock.calls[0]?.[0] as () => {
+      trustHost?: boolean;
+      session?: { strategy?: string };
+    };
+    const config = configFactory();
+
+    expect(config.trustHost).toBe(false);
+    expect(config.session).toEqual({ strategy: "jwt" });
   });
 });

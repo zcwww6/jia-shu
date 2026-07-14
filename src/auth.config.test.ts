@@ -8,6 +8,10 @@ import { authConfig, protectedRouteMatchers, protectedRoutePrefixes } from "./au
 describe("authConfig.callbacks.authorized", () => {
   const authorized = authConfig.callbacks?.authorized;
 
+  it("uses JWT sessions so the Edge middleware and primary auth share one cookie format", () => {
+    expect(authConfig.session).toEqual({ strategy: "jwt" });
+  });
+
   it("allows /sign-in without authentication", async () => {
     const result = await authorized?.({
       auth: null,
