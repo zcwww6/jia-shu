@@ -37,7 +37,57 @@ describe("primary auth configuration", () => {
 
     await import("./auth");
 
-    const configFactory = nextAuth.mock.calls[0]?.[0] as () => { trustHost?: boolean };
-    expect(configFactory().trustHost).toBe(false);
+    const configFactory = nextAuth.mock.calls[0]?.[0] as () => {
+      trustHost?: boolean;
+      session?: { strategy?: string };
+    };
+    const config = configFactory();
+
+    expect(config.trustHost).toBe(false);
+    expect(config.session).toEqual({ strategy: "jwt" });
+  });
+
+  it("uses the JWT subject when building a session", async () => {
+    process.env.AUTH_TRUST_HOST = "false";
+    process.env.AUTH_RESEND_API_KEY = "re_test";
+    process.env.AUTH_RESEND_FROM = "Jiashu <noreply@example.com>";
+
+    await import("./auth");
+
+    const configFactory = nextAuth.mock.calls[0]?.[0] as () => {
+      callbacks?: {
+        session?: (args: never) => Promise<{ user?: { id?: string } }> | { user?: { id?: string } };
+      };
+    };
+    const sessionCallback = configFactory().callbacks?.session;
+
+    const session = await sessionCallback?.({
+      session: { user: {}, expires: "2030-01-01T00:00:00.000Z" },
+      token: { sub: "user-1" },
+    } as never);
+
+    expect(session?.user?.id).toBe("user-1");
+  });
+
+  it("does not throw or invent a user ID when a JWT has no subject", async () => {
+    process.env.AUTH_TRUST_HOST = "false";
+    process.env.AUTH_RESEND_API_KEY = "re_test";
+    process.env.AUTH_RESEND_FROM = "Jiashu <noreply@example.com>";
+
+    await import("./auth");
+
+    const configFactory = nextAuth.mock.calls[0]?.[0] as () => {
+      callbacks?: {
+        session?: (args: never) => Promise<{ user?: { id?: string } }> | { user?: { id?: string } };
+      };
+    };
+    const sessionCallback = configFactory().callbacks?.session;
+
+    const session = await sessionCallback?.({
+      session: { user: {}, expires: "2030-01-01T00:00:00.000Z" },
+      token: {},
+    } as never);
+
+    expect(session).toEqual({ user: {}, expires: "2030-01-01T00:00:00.000Z" });
   });
 });
