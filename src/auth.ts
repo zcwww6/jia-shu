@@ -18,9 +18,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth(() => ({
   ],
   callbacks: {
     ...authConfig.callbacks,
-    session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
+    session({ session, token, user }) {
+      const userId = user?.id ?? token.sub;
+
+      if (session.user && userId) {
+        session.user.id = userId;
       }
 
       return session;
