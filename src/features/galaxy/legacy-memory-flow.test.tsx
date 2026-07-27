@@ -269,26 +269,28 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(0);
   });
 
-  it("clears loading after closing a queued memory flow so a reopened recorder can start again", async () => {
+  it("retains a queued draft after closing so the same reopened recorder continues without another draft POST", async () => {
     const { fetchMock } = await startQueuedMemoryPolling();
-    fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-2", status: "draft", version: 1 }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-2", status: "queued" }), { status: 202 }));
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ id: "job-1", status: "failed", error: "模型不可用" }),
+      { status: 200 },
+    ));
 
     fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
     fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
 
-    const primaryAction = screen.getByRole("button", { name: /^(点亮为记忆星|AI 整理中…)$/ });
+    const primaryAction = screen.getByRole("button", { name: "继续整理" });
     expect(primaryAction).toBeEnabled();
     expect(screen.queryByText(/AbortError/)).not.toBeInTheDocument();
 
     fireEvent.click(primaryAction);
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
     });
 
-    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories")).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
+    expect(screen.getByText("模型不可用")).toBeInTheDocument();
   });
 
   it("cancels queued polling and closes quick record when mobile star-zone selection changes", async () => {
@@ -304,26 +306,28 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(0);
   });
 
-  it("clears loading after switching zones so the reopened recorder can start again", async () => {
+  it("retains a queued draft after switching zones so the same reopened recorder continues without another draft POST", async () => {
     const { fetchMock } = await startQueuedMemoryPolling();
-    fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-2", status: "draft", version: 1 }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-2", status: "queued" }), { status: 202 }));
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ id: "job-1", status: "failed", error: "模型不可用" }),
+      { status: 200 },
+    ));
 
     fireEvent.change(screen.getByLabelText("星域"), { target: { value: "memories" } });
     fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
 
-    const primaryAction = screen.getByRole("button", { name: /^(点亮为记忆星|AI 整理中…)$/ });
+    const primaryAction = screen.getByRole("button", { name: "继续整理" });
     expect(primaryAction).toBeEnabled();
     expect(screen.queryByText(/AbortError/)).not.toBeInTheDocument();
 
     fireEvent.click(primaryAction);
     await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
     });
 
-    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories")).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
+    expect(screen.getByText("模型不可用")).toBeInTheDocument();
   });
 
   it("cancels queued polling and closes quick record when focusPlanet changes the active zone", async () => {
@@ -426,6 +430,34 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       planetId: "planet-self",
       sourceText: changedContent,
     });
+  });
+
+  it("creates a new idempotent draft when a cancelled recorder reopens for another planet", async () => {
+    const { fetchMock } = await startQueuedMemoryPolling();
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-2", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-2", status: "queued" }), { status: 202 }));
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆" }));
+
+    expect(screen.getByText("目标星球：妈妈")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const draftRequests = fetchMock.mock.calls.filter(([url]) => url === "/api/memories");
+    expect(draftRequests).toHaveLength(2);
+    const firstRequest = draftRequests[0][1] as RequestInit;
+    const secondRequest = draftRequests[1][1] as RequestInit;
+    const firstKey = (firstRequest.headers as Record<string, string>)["Idempotency-Key"];
+    const secondKey = (secondRequest.headers as Record<string, string>)["Idempotency-Key"];
+
+    expect(secondKey).not.toBe(firstKey);
+    expect(JSON.parse(secondRequest.body as string)).toMatchObject({ planetId: "planet-mom" });
   });
 
   it("stops bounded polling after twenty controlled queued responses", async () => {

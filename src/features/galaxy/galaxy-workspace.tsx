@@ -661,13 +661,23 @@ export function GalaxyWorkspace({
         return;
       }
 
+      const draftSignature = buildMemoryDraftSignature(target.id, quickRecordContent.trim());
+      const existingDraft = memoryDraftContextRef.current;
+      const shouldRetainDraft = Boolean(
+        memoryDraftId &&
+        existingDraft?.draftId === memoryDraftId &&
+        existingDraft.signature === draftSignature,
+      ) || memoryDraftRequestRef.current?.signature === draftSignature;
+
       setQuickRecordTargetPlanetId(target.id);
-      setMemoryReview(null);
-      setMemoryDraftId(null);
-      setMemoryJob(null);
-      setMemoryFlowError(null);
-      memoryDraftContextRef.current = null;
-      resetMemoryRequestKeys();
+      if (!shouldRetainDraft) {
+        setMemoryReview(null);
+        setMemoryDraftId(null);
+        setMemoryJob(null);
+        setMemoryFlowError(null);
+        memoryDraftContextRef.current = null;
+        resetMemoryRequestKeys();
+      }
     }
     setActivePanel(key);
     setRoamingPlanetId(null);
