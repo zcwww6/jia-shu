@@ -2584,8 +2584,8 @@ function SidePanel({
             {activePanel === "memory1" ? (
               <button
                 className="primary"
-                onClick={() => {
-                  void onScanResonance();
+                onClick={async () => {
+                  if (!(await onScanResonance())) return;
                   onGo("resonance");
                   onClose();
                 }}

@@ -535,14 +535,10 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByRole("button", { name: "生成家书草稿" })).toBeInTheDocument();
   });
 
-  it("lets users complete the demo path from memory to resonance to book share", () => {
+  it("lets users complete the demo path from resonance to book share", () => {
     renderDemoGalaxy();
 
-    fireEvent.click(screen.getByRole("button", { name: "记忆星群" }));
-    fireEvent.click(screen.getByRole("button", { name: "新家里的第一个除夕" }));
-    expect(screen.getByText("AI 已整理为记忆星：")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
+    fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
     expect(screen.getByText("两颗星球之间，不是合并，而是共鸣")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "2018 除夕共鸣星轨" }));

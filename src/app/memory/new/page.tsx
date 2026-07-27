@@ -1,5 +1,5 @@
-import { MemoryNewClientPage } from "@/features/demo-loop/memory-new-client-page";
+import { redirect } from "next/navigation";
 
 export default function NewMemoryPage() {
-  return <MemoryNewClientPage />;
+  redirect("/galaxy");
 }

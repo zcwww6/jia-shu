@@ -80,5 +80,7 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("complementary", { name: "星图详情" })).toBeInTheDocument();
+    expect(screen.queryByText("两颗星球之间，不是合并，而是共鸣")).not.toBeInTheDocument();
   });
 });
