@@ -45,7 +45,6 @@ import {
 
 import {
   readGalaxyBookResult,
-  readGalaxyExtractResult,
   readGalaxyResonanceResult,
   writeGalaxyBookResult,
   writeGalaxyResonanceResult,
@@ -392,9 +391,7 @@ export function GalaxyWorkspace({
   const [quickRecordContent, setQuickRecordContent] = useState(
     "2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。",
   );
-  const [extractResult, setExtractResult] = useState<MemoryExtractResponse | null>(
-    () => readGalaxyExtractResult(),
-  );
+  const [extractResult, setExtractResult] = useState<MemoryExtractResponse | null>(null);
   const [resonanceResult, setResonanceResult] = useState<ResonanceScanResponse | null>(
     () => readGalaxyResonanceResult(),
   );
@@ -701,8 +698,12 @@ export function GalaxyWorkspace({
   }
 
   async function scanResonanceStar() {
-    const memoryId = extractResult?.memory.id ?? memoryStars[0].id;
-    const result = await loopApi.run(() => scanResonance(memoryId));
+    if (!extractResult) {
+      setToast("请先确认一条本次会话中的记忆星，再扫描共鸣");
+      return false;
+    }
+
+    const result = await loopApi.run(() => scanResonance(extractResult.memory.id));
     if (!result) {
       setToast(loopApi.error ?? "共鸣扫描失败，请稍后重试");
       return false;
