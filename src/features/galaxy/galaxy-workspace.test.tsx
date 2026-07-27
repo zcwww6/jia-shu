@@ -153,6 +153,157 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByTestId("planet-link-link-me-grandma-resonance")).toBeInTheDocument();
   });
 
+  it("persists all selected planet settings from the server response and carries its version forward", async () => {
+    const responses = [
+      {
+        id: "server-mom", name: "服务端改名后的妈妈星球", type: "parent", lifeState: "active",
+        visibility: "family", role: "母亲", theme: "暖橘星环", summary: "服务端妈妈星球。",
+        position: { x: 55, y: 35 }, version: 8, coverAssetId: null,
+      },
+      {
+        id: "server-mom", name: "服务端改名后的妈妈星球", type: "parent", lifeState: "active",
+        visibility: "family", role: "母亲", theme: "深空墨蓝", summary: "服务端妈妈星球。",
+        position: { x: 55, y: 35 }, version: 9, coverAssetId: null,
+      },
+      {
+        id: "server-mom", name: "服务端改名后的妈妈星球", type: "parent", lifeState: "active",
+        visibility: "public", role: "母亲", theme: "深空墨蓝", summary: "服务端妈妈星球。",
+        position: { x: 55, y: 35 }, version: 10, coverAssetId: null,
+      },
+      {
+        id: "server-mom", name: "服务端改名后的妈妈星球", type: "parent", lifeState: "memorial",
+        visibility: "public", role: "母亲", theme: "深空墨蓝", summary: "服务端妈妈星球。",
+        position: { x: 55, y: 35 }, version: 11, coverAssetId: null,
+      },
+      {
+        id: "server-mom", name: "服务端改名后的妈妈星球", type: "parent", lifeState: "active",
+        visibility: "public", role: "母亲", theme: "深空墨蓝", summary: "服务端妈妈星球。",
+        position: { x: 55, y: 35 }, version: 12, coverAssetId: null,
+      },
+    ];
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify(responses.shift()), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-mom", name: "妈妈的星球", type: "parent", version: 7, role: "母亲",
+            visibility: "family", theme: "暖橘星环", position: { x: 55, y: 35 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "服务端妈妈星球。",
+          },
+          {
+            id: "server-dad", name: "爸爸的星球", type: "parent", version: 3, role: "父亲",
+            visibility: "family", theme: "暖橘星环", position: { x: 38, y: 46 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "未被修改的星球。",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "重命名星球" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "星球名称" }), { target: { value: "本地草稿名称" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "进入服务端改名后的妈妈星球漫游" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "进入爸爸的星球漫游" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/planets/server-mom",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ "If-Match-Version": "7" }),
+        body: JSON.stringify({ version: 7, name: "本地草稿名称" }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑主题" }));
+    fireEvent.click(screen.getByRole("button", { name: /深空墨蓝/ }));
+    fireEvent.click(screen.getByRole("button", { name: "保存星球主题" }));
+    await waitFor(() => expect(screen.getByText(/当前星球主题：深空墨蓝/)).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/planets/server-mom",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ "If-Match-Version": "8" }),
+        body: JSON.stringify({ version: 8, theme: "深空墨蓝" }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入服务端改名后的妈妈星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置权限" }));
+    fireEvent.click(screen.getByRole("button", { name: "设为公开分享" }));
+    await waitFor(() => expect(screen.getByText("当前可见范围：公开分享")).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/planets/server-mom",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ "If-Match-Version": "9" }),
+        body: JSON.stringify({ version: 9, visibility: "public" }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
+    fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入服务端改名后的妈妈星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "生命周期" }));
+    fireEvent.click(screen.getByRole("button", { name: "设为纪念星" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "进入服务端改名后的妈妈星球漫游" })).toHaveClass("memorial-planet"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/planets/server-mom",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ "If-Match-Version": "10" }),
+        body: JSON.stringify({ version: 10, lifeState: "memorial" }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "设为在世星球" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "进入服务端改名后的妈妈星球漫游" })).not.toHaveClass("memorial-planet"));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/planets/server-mom",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ "If-Match-Version": "11" }),
+        body: JSON.stringify({ version: 11, lifeState: "active" }),
+      }),
+    );
+  });
+
+  it("keeps the original selected planet visible when a settings PATCH is rejected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: "版本已过期，请刷新后重试" }), { status: 409 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-mom", name: "妈妈的星球", type: "parent", version: 7, role: "母亲",
+            visibility: "family", theme: "暖橘星环", position: { x: 55, y: 35 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "服务端妈妈星球。",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "重命名星球" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "星球名称" }), { target: { value: "不会保存的名称" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+
+    await waitFor(() => expect(screen.getByText("版本已过期，请刷新后重试")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "进入妈妈的星球漫游" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入不会保存的名称漫游" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/planets/server-mom",
+      expect.objectContaining({ method: "PATCH", headers: expect.objectContaining({ "If-Match-Version": "7" }) }),
+    );
+  });
+
   it("persists planet management and the first family connection from the legacy editor", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/planets" && init?.method === "POST") {

@@ -68,7 +68,9 @@ import {
   createLegacyPlanet,
   createLegacyRelationship,
   restoreLegacyPlanet,
+  updateLegacyPlanet,
   type LegacyManagedPlanet,
+  type LegacyPlanetUpdate,
 } from "./legacy-galaxy-api";
 
 interface GalaxyView {
@@ -99,6 +101,8 @@ type PanelKey =
   | "lifecycle"
   | "quickRecord"
   | "shareConfirm";
+
+type LegacyPlanetChanges = Omit<LegacyPlanetUpdate, "id" | "version">;
 
 const initialView: GalaxyView = {
   panX: 0,
@@ -328,6 +332,8 @@ export function GalaxyWorkspace({
   const [selectedWorkshopBg, setSelectedWorkshopBg] = useState("家书暖夜");
   const [selectedWorkshopMaterial, setSelectedWorkshopMaterial] = useState("柔光釉面");
   const [selectedTheme, setSelectedTheme] = useState("家庭团圆");
+  const [renamePlanetTarget, setRenamePlanetTarget] = useState<Planet | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [bookGenerated, setBookGenerated] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<GalaxyView>(initialView);
@@ -620,12 +626,35 @@ export function GalaxyWorkspace({
     setActivePanel(null);
   }
 
+  async function persistPlanetChange(planet: Planet, changes: LegacyPlanetChanges) {
+    if (planet.version === undefined) {
+      setToast("这颗演示星球尚未保存，无法同步设置");
+      return false;
+    }
+
+    try {
+      const updated = await updateLegacyPlanet({ id: planet.id, version: planet.version, ...changes });
+      const persistedPlanet = toVisualPlanet(updated, planet);
+
+      setGalaxyPlanets((current) => current.map((item) => (item.id === planet.id ? persistedPlanet : item)));
+      setToast(`已同步「${persistedPlanet.name}」的星球设置`);
+      return true;
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "保存星球设置失败，请稍后重试");
+      return false;
+    }
+  }
+
   function editPlanetTheme(planetId: string) {
+    const planet = galaxyPlanets.find((item) => item.id === planetId);
+    if (!planet) return;
+
     setSelectedPlanetId(planetId);
     setClosingPlanetId(null);
     setActiveZone("workshop");
     setActivePanel(null);
     setRoamingPlanetId(null);
+    setSelectedWorkshopBg(planet.theme);
     setToast("星球主题实验室已就近展开");
   }
 
@@ -658,7 +687,22 @@ export function GalaxyWorkspace({
   function renamePlanet(planet: Planet) {
     setSelectedPlanetId(planet.id);
     setClosingPlanetId(null);
-    setToast(`「${planet.name}」可在星球操作环内重命名`);
+    setRenamePlanetTarget(planet);
+    setRenameDraft(planet.name);
+  }
+
+  async function savePlanetName() {
+    if (!renamePlanetTarget) return;
+
+    const name = renameDraft.trim();
+    if (!name) {
+      setToast("请先填写星球名称");
+      return;
+    }
+
+    if (await persistPlanetChange(renamePlanetTarget, { name })) {
+      setRenamePlanetTarget(null);
+    }
   }
 
   async function addFamilyPlanet() {
@@ -1097,6 +1141,7 @@ export function GalaxyWorkspace({
               selectedWorkshopBg={selectedWorkshopBg}
               selectedWorkshopMaterial={selectedWorkshopMaterial}
               selectedWorkshopZone={selectedWorkshopZone}
+              selectedPlanet={selectedPlanet}
               onConfigurePlanetPrivacy={configurePlanetPrivacy}
               onEditPlanetTheme={editPlanetTheme}
               onGenerateBookFromPlanet={generateBookFromPlanet}
@@ -1104,6 +1149,9 @@ export function GalaxyWorkspace({
               onOpenStarMapEditor={() => setStarMapEditorOpen(true)}
               onOpenPlanetLifecycle={openPlanetLifecycle}
               onRenamePlanet={renamePlanet}
+              onSaveSelectedPlanetTheme={(theme) => {
+                if (selectedPlanet) void persistPlanetChange(selectedPlanet, { theme });
+              }}
               setSelectedWorkshopBg={setSelectedWorkshopBg}
               setSelectedWorkshopMaterial={setSelectedWorkshopMaterial}
               setSelectedWorkshopZone={setSelectedWorkshopZone}
@@ -1161,6 +1209,7 @@ export function GalaxyWorkspace({
           onLightMemory={lightMemoryStar}
           onQuickRecordChange={setQuickRecordContent}
           onScanResonance={scanResonanceStar}
+          onPersistPlanetChange={persistPlanetChange}
           onConfirmShare={() => {
             void confirmShare();
           }}
@@ -1168,8 +1217,20 @@ export function GalaxyWorkspace({
           onOpenPanel={openPanel}
           onSelectTheme={selectThemeFromNebula}
           onToast={setToast}
+          selectedPlanet={selectedPlanet}
         />
       </AnimatePresence>
+      {renamePlanetTarget ? (
+        <RenamePlanetDialog
+          name={renameDraft}
+          onCancel={() => setRenamePlanetTarget(null)}
+          onNameChange={setRenameDraft}
+          onSave={() => {
+            void savePlanetName();
+          }}
+          planet={renamePlanetTarget}
+        />
+      ) : null}
       {roamingPlanet ? (
         <PlanetRoamingOverlay
           planet={roamingPlanet}
@@ -1250,6 +1311,7 @@ function ZoneScene({
   selectedWorkshopBg,
   selectedWorkshopMaterial,
   selectedWorkshopZone,
+  selectedPlanet,
   setSelectedWorkshopBg,
   setSelectedWorkshopMaterial,
   setSelectedWorkshopZone,
@@ -1260,6 +1322,7 @@ function ZoneScene({
   onOpenStarMapEditor,
   onOpenPlanetLifecycle,
   onRenamePlanet,
+  onSaveSelectedPlanetTheme,
 }: {
   activeZone: GalaxyZoneKey;
   anchorPlanetIds: {
@@ -1286,6 +1349,7 @@ function ZoneScene({
   selectedWorkshopBg: string;
   selectedWorkshopMaterial: string;
   selectedWorkshopZone: GalaxyZoneKey;
+  selectedPlanet: Planet | null;
   setSelectedWorkshopBg: (value: string) => void;
   setSelectedWorkshopMaterial: (value: string) => void;
   setSelectedWorkshopZone: (value: GalaxyZoneKey) => void;
@@ -1296,6 +1360,7 @@ function ZoneScene({
   onOpenStarMapEditor: () => void;
   onOpenPlanetLifecycle: (planetId: string) => void;
   onRenamePlanet: (planet: Planet) => void;
+  onSaveSelectedPlanetTheme: (theme: string) => void;
 }) {
   if (activeZone === "privacy") {
     return (
@@ -1407,6 +1472,7 @@ function ZoneScene({
         </section>
         <section className="workshop-panel">
           <p className="panel-kicker">背景主题</p>
+          {selectedPlanet ? <p>正在调整「{selectedPlanet.name}」· 当前星球主题：{selectedPlanet.theme}</p> : null}
           <PresetGrid
             current={selectedWorkshopBg}
             items={[
@@ -1429,9 +1495,15 @@ function ZoneScene({
             onSelect={setSelectedWorkshopMaterial}
           />
           <div className="book-actions">
-            <button className="primary" onClick={() => onToast("星球主题已应用")} type="button">
-              应用到当前星域
-            </button>
+            {selectedPlanet ? (
+              <button className="primary" onClick={() => onSaveSelectedPlanetTheme(selectedWorkshopBg)} type="button">
+                保存星球主题
+              </button>
+            ) : (
+              <button className="primary" onClick={() => onToast("星球主题已应用")} type="button">
+                应用到当前星域
+              </button>
+            )}
             <button className="secondary" onClick={() => onGo(selectedWorkshopZone)} type="button">
               预览该星域
             </button>
@@ -2216,10 +2288,12 @@ function SidePanel({
   onLightMemory,
   onQuickRecordChange,
   onScanResonance,
+  onPersistPlanetChange,
   onConfirmShare,
   onOpenPanel,
   onSelectTheme,
   onToast,
+  selectedPlanet,
 }: {
   activePanel: PanelKey | null;
   extractResult: MemoryExtractResponse | null;
@@ -2233,10 +2307,12 @@ function SidePanel({
   onLightMemory: () => void;
   onQuickRecordChange: (value: string) => void;
   onScanResonance: () => Promise<boolean>;
+  onPersistPlanetChange: (planet: Planet, changes: LegacyPlanetChanges) => Promise<boolean>;
   onConfirmShare: () => void;
   onOpenPanel: (key: PanelKey) => void;
   onSelectTheme: (theme: string) => void;
   onToast: (message: string) => void;
+  selectedPlanet: Planet | null;
 }) {
   // live-or-fallback：有真实响应时用真实数据，否则回落静态 mock，保证旧测试断言成立。
   const liveMemory = extractResult?.memory ?? memoryStars[0];
@@ -2275,7 +2351,13 @@ function SidePanel({
       ) : null}
 
       {["scopePrivate", "scopeFamily", "scopePublic"].includes(activePanel) ? (
-        <ScopePanel activePanel={activePanel} />
+        <ScopePanel
+          activePanel={activePanel}
+          planet={selectedPlanet}
+          onSaveVisibility={(visibility) => {
+            if (selectedPlanet) void onPersistPlanetChange(selectedPlanet, { visibility });
+          }}
+        />
       ) : null}
 
       {["memory1", "memory2", "memory3", "memory4"].includes(activePanel) ? (
@@ -2456,6 +2538,24 @@ function SidePanel({
             <button className="secondary" onClick={() => onSelectTheme("父母人生")} type="button">
               写成父母人生家书
             </button>
+            {selectedPlanet ? (
+              <button
+                className="secondary"
+                onClick={() => void onPersistPlanetChange(selectedPlanet, { lifeState: "memorial" })}
+                type="button"
+              >
+                设为纪念星
+              </button>
+            ) : null}
+            {selectedPlanet?.lifeState === "memorial" ? (
+              <button
+                className="secondary"
+                onClick={() => void onPersistPlanetChange(selectedPlanet, { lifeState: "active" })}
+                type="button"
+              >
+                设为在世星球
+              </button>
+            ) : null}
           </div>
         </>
       ) : null}
@@ -2708,7 +2808,36 @@ function ProfilePanel({
   );
 }
 
-function ScopePanel({ activePanel }: { activePanel: PanelKey }) {
+function ScopePanel({
+  activePanel,
+  planet,
+  onSaveVisibility,
+}: {
+  activePanel: PanelKey;
+  planet: Planet | null;
+  onSaveVisibility: (visibility: Planet["visibility"]) => void;
+}) {
+  const visibilityLabel: Record<Planet["visibility"], string> = {
+    private: "私密核心",
+    family: "家庭可见",
+    selected: "指定家人可见",
+    public: "公开分享",
+  };
+  const visibilityControls = planet ? (
+    <div className="big-actions">
+      <p>当前可见范围：{visibilityLabel[planet.visibility]}</p>
+      <button className="secondary" onClick={() => onSaveVisibility("private")} type="button">
+        设为私密核心
+      </button>
+      <button className="secondary" onClick={() => onSaveVisibility("family")} type="button">
+        设为家庭可见
+      </button>
+      <button className="secondary" onClick={() => onSaveVisibility("public")} type="button">
+        设为公开分享
+      </button>
+    </div>
+  ) : null;
+
   if (activePanel === "scopePrivate") {
     return (
       <>
@@ -2725,6 +2854,7 @@ function ScopePanel({ activePanel }: { activePanel: PanelKey }) {
           <span>允许进入共鸣候选</span>
           <i className="switch" />
         </div>
+        {visibilityControls}
       </>
     );
   }
@@ -2741,6 +2871,7 @@ function ScopePanel({ activePanel }: { activePanel: PanelKey }) {
           <span>允许家庭成员查看</span>
           <i className="switch on" />
         </div>
+        {visibilityControls}
       </>
     );
   }
@@ -2760,7 +2891,54 @@ function ScopePanel({ activePanel }: { activePanel: PanelKey }) {
         <span>公开原始素材</span>
         <i className="switch" />
       </div>
+      {visibilityControls}
     </>
+  );
+}
+
+function RenamePlanetDialog({
+  name,
+  onCancel,
+  onNameChange,
+  onSave,
+  planet,
+}: {
+  name: string;
+  onCancel: () => void;
+  onNameChange: (value: string) => void;
+  onSave: () => void;
+  planet: Planet;
+}) {
+  return (
+    <motion.section
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      aria-label="重命名星球"
+      aria-modal="true"
+      className="panel open"
+      initial={{ opacity: 0, y: 18, scale: 0.96 }}
+      role="dialog"
+      transition={{ duration: 0.2 }}
+    >
+      <h2>重命名「{planet.name}」</h2>
+      <p>名称会在服务端确认后更新到这颗星球，原有星轨和漫游状态保持不变。</p>
+      <label>
+        星球名称
+        <input
+          aria-label="星球名称"
+          className="panel-input"
+          onChange={(event) => onNameChange(event.target.value)}
+          value={name}
+        />
+      </label>
+      <div className="big-actions">
+        <button className="primary" onClick={onSave} type="button">
+          保存名称
+        </button>
+        <button className="secondary" onClick={onCancel} type="button">
+          取消
+        </button>
+      </div>
+    </motion.section>
   );
 }
 
