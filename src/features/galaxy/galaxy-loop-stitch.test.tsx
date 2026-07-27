@@ -1,105 +1,52 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { planets } from "@/shared/mock/galaxy-data";
-import type { MemoryExtractResponse, ResonanceScanResponse } from "@/shared/types/galaxy";
-
 import { GalaxyWorkspace } from "./galaxy-workspace";
 
-const legacyExtract: MemoryExtractResponse = {
-  memory: {
-    id: "memory-stale",
-    planetId: "mock-mom",
-    title: "旧缓存记忆",
-    occurredAt: "旧缓存时间",
-    location: "旧缓存地点",
-    people: ["旧缓存家人"],
-    emotions: ["旧缓存情绪"],
-    visibility: "family",
-    summary: "不应在新会话中被使用的旧缓存。",
+const persistedResonancePlanets = [
+  {
+    id: "planet-self", name: "我的星球", type: "self" as const, role: "家庭管理员",
+    visibility: "private" as const, theme: "暖夜", position: { x: 35, y: 50 },
+    stats: { memoryStars: 1, resonanceTracks: 0, bookDrafts: 0 }, summary: "我的家庭记忆。",
   },
-  suggestion: {
-    title: "旧缓存记忆",
-    occurredAt: "旧缓存时间",
-    location: "旧缓存地点",
-    people: ["旧缓存家人"],
-    emotions: ["旧缓存情绪"],
-    summary: "不应在新会话中被使用的旧缓存。",
-    uncertainFields: [],
+  {
+    id: "planet-mom", name: "妈妈的星球", type: "parent" as const, role: "妈妈",
+    visibility: "family" as const, theme: "暖橘", position: { x: 65, y: 50 },
+    stats: { memoryStars: 1, resonanceTracks: 0, bookDrafts: 0 }, summary: "妈妈的家庭记忆。",
   },
-  sourceText: "旧缓存原文",
-  status: "confirmed",
-};
+];
 
-const currentSessionReview = {
-  id: "memory-current",
-  planetId: "mock-me",
-  status: "needs_confirmation",
+const confirmedResonanceMemories = [
+  {
+    id: "memory-self-eve", planetId: "planet-self", title: "我的除夕", occurredAt: "2018 年除夕", location: "新家",
+    people: ["妈妈", "我"], emotions: [], visibility: "private" as const, summary: "我记得妈妈端出最后一盘饺子。",
+  },
+  {
+    id: "memory-mom-eve", planetId: "planet-mom", title: "妈妈的除夕", occurredAt: "2018 年除夕", location: "新家",
+    people: ["妈妈", "我"], emotions: [], visibility: "family" as const, summary: "妈妈记得一家人围坐在桌前。",
+  },
+];
+
+const pendingResonance = {
+  id: "resonance-eve",
+  sourceMemoryId: "memory-self-eve",
+  targetMemoryId: "memory-mom-eve",
+  score: 0.91,
+  reason: "两段已确认记忆都指向新家的除夕团圆。",
+  status: "candidate" as const,
   version: 3,
-  title: "本次会话记忆",
-  summary: "已确认的当前会话记忆。",
-  tags: ["当前会话"],
-  occurredAtLabel: "今天",
-  locationLabel: "家中",
-  people: ["我"],
-  visibility: "family",
-  allowResonance: true,
-  allowBook: true,
-  uncertainFields: [],
 };
 
-const successfulResonance: ResonanceScanResponse = {
-  candidate: {
-    id: "resonance-current",
-    title: "本次会话共鸣",
-    sourceMemoryIds: ["memory-current"],
-    score: 0.92,
-    status: "candidate",
-    reason: "当前会话已确认记忆形成的共鸣。",
-  },
-  comparedMemories: [
-    {
-      id: "memory-current",
-      planetId: "mock-me",
-      title: "本次会话记忆",
-      occurredAt: "今天",
-      location: "家中",
-      people: ["我"],
-      emotions: [],
-      visibility: "family",
-      summary: "已确认的当前会话记忆。",
-    },
-  ],
-  breakdown: { time: 1, people: 1, location: 1, semantic: 1 },
-  requiresConfirmation: true,
-};
-
-async function confirmCurrentSessionMemory(scanResponse: Response) {
-  vi.useFakeTimers();
-  const fetchMock = vi.fn()
-    .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-current", status: "draft", version: 1 }), { status: 201 }))
-    .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-current", status: "queued" }), { status: 202 }))
-    .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-current", status: "completed" }), { status: 200 }))
-    .mockResolvedValueOnce(new Response(JSON.stringify(currentSessionReview), { status: 200 }))
-    .mockResolvedValueOnce(new Response(JSON.stringify({ ...currentSessionReview, status: "confirmed", version: 4 }), { status: 200 }))
-    .mockResolvedValueOnce(scanResponse);
-  vi.stubGlobal("fetch", fetchMock);
-
-  render(<GalaxyWorkspace initialPlanets={planets} initialLinks={[]} />);
-  fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
-  fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
-  await act(async () => {
-    await Promise.resolve();
-    await vi.advanceTimersByTimeAsync(250);
-  });
-  fireEvent.click(screen.getByRole("button", { name: "确认点亮记忆星" }));
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-
-  expect(screen.getByRole("button", { name: "沿共鸣星轨前进" })).toBeInTheDocument();
-  return fetchMock;
+function renderPersistedResonanceGalaxy(options: { pending?: boolean } = {}) {
+  return render(
+    <GalaxyWorkspace
+      initialPlanets={persistedResonancePlanets}
+      initialLinks={[]}
+      initialConfirmedMemories={confirmedResonanceMemories}
+      initialPendingResonances={options.pending === false ? [] : [pendingResonance]}
+    />,
+  );
 }
 
 describe("GalaxyWorkspace 星系内闭环缝合", () => {
@@ -175,60 +122,127 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
     expect(screen.queryByText("那年第一次在新房里过年。妈妈忙了一整天，最后在客厅拍了一张合照。")).not.toBeInTheDocument();
   });
 
-  it("不会用旧的抽取缓存显示或扫描共鸣", async () => {
-    const fetchMock = vi.fn();
+  it("scans a real confirmed memory through the persisted endpoint and only displays safe projected sources", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [pendingResonance] }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
-    window.localStorage.setItem("jiashu-galaxy-extract", JSON.stringify(legacyExtract));
+    renderPersistedResonanceGalaxy({ pending: false });
 
-    render(<GalaxyWorkspace initialPlanets={planets} initialLinks={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "记忆星群" }));
-    fireEvent.click(screen.getByRole("button", { name: "新家里的第一个除夕" }));
-
-    expect(screen.queryByText("旧缓存地点")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
     fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
-    await act(async () => {
-      await Promise.resolve();
-    });
 
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(screen.getByRole("complementary", { name: "星图详情" })).toBeInTheDocument();
-    expect(screen.queryByText("两颗星球之间，不是合并，而是共鸣")).not.toBeInTheDocument();
+    await expect(screen.findByRole("button", { name: "共鸣候选：我的除夕 ↔ 妈妈的除夕" })).resolves.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/resonances/scan",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ memoryId: "memory-self-eve" }),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "共鸣候选：我的除夕 ↔ 妈妈的除夕" }));
+    expect(screen.getByText("我记得妈妈端出最后一盘饺子。")).toBeInTheDocument();
+    expect(screen.getByText("妈妈记得一家人围坐在桌前。")).toBeInTheDocument();
+    expect(screen.queryByText("看着孩子们围坐在桌前，觉得一天的劳累都值了。")).not.toBeInTheDocument();
   });
 
-  it("keeps the confirmed-memory panel open when resonance scanning fails", async () => {
-    const fetchMock = await confirmCurrentSessionMemory(
+  it("keeps the confirmed-memory panel open with a real error when resonance scanning fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ message: "共鸣服务暂不可用" }), { status: 503 }),
     );
+    vi.stubGlobal("fetch", fetchMock);
+    renderPersistedResonanceGalaxy({ pending: false });
 
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
     fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
 
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/intersections/scan", expect.anything());
-    expect(screen.getByText("共鸣扫描失败，请稍后重试")).toBeInTheDocument();
+    await expect(screen.findByText("共鸣服务暂不可用")).resolves.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/resonances/scan", expect.anything());
     expect(screen.getByRole("complementary", { name: "星图详情" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "共鸣星轨" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /共鸣候选：/ })).not.toBeInTheDocument();
   });
 
-  it("enters the resonance scene and shows the result after a confirmed-memory scan succeeds", async () => {
-    const fetchMock = await confirmCurrentSessionMemory(new Response(JSON.stringify(successfulResonance), { status: 200 }));
+  it("keeps the current confirmed-memory panel open when the real scan returns no candidates", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ candidates: [] }), { status: 200 }),
+    ));
+    renderPersistedResonanceGalaxy({ pending: false });
 
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
     fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
 
-    expect(screen.queryByRole("complementary", { name: "星图详情" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "共鸣星轨" })).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenLastCalledWith("/api/intersections/scan", expect.anything());
-    expect(window.localStorage.getItem("jiashu-galaxy-resonance")).toContain("本次会话共鸣");
-    expect(screen.getByRole("button", { name: "本次会话共鸣" })).toBeInTheDocument();
+    await expect(screen.findByText("暂未找到可确认的共鸣星轨。"))
+      .resolves.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "星图详情" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /共鸣候选：/ })).not.toBeInTheDocument();
+  });
+
+  it("rehydrates a persisted pending candidate after refresh using only safe memory projections", () => {
+    renderPersistedResonanceGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
+
+    expect(screen.getByRole("button", { name: "共鸣候选：我的除夕 ↔ 妈妈的除夕" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "共鸣候选：我的除夕 ↔ 妈妈的除夕" }));
+    expect(screen.getByRole("heading", { name: "共鸣候选" })).toBeInTheDocument();
+    expect(screen.getByText("我的除夕")).toBeInTheDocument();
+    expect(screen.getByText("妈妈的除夕")).toBeInTheDocument();
+  });
+
+  it("confirms a candidate through the versioned API before drawing the real resonance link", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...pendingResonance,
+      status: "confirmed",
+      confirmedAt: "2026-07-28T00:00:00.000Z",
+      rejectedAt: null,
+      version: 4,
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderPersistedResonanceGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
+    fireEvent.click(screen.getByRole("button", { name: "共鸣候选：我的除夕 ↔ 妈妈的除夕" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认这条星轨" }));
+
+    await expect(screen.findByText("已确认这条星轨，可进入家书工坊。"))
+      .resolves.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/resonances/resonance-eve/confirm",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "If-Match-Version": "3" }),
+        body: JSON.stringify({ status: "confirmed", version: 3 }),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
+    expect(document.querySelector('[data-link-id="resonance-eve"]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "进入我的星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入星球" }));
+    expect(screen.getByLabelText("星球 我的星球 共鸣星轨 1 条")).toBeInTheDocument();
+  });
+
+  it("rejects a pending candidate through the versioned API without drawing a resonance link", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...pendingResonance,
+      status: "rejected",
+      confirmedAt: null,
+      rejectedAt: "2026-07-28T00:00:00.000Z",
+      version: 4,
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderPersistedResonanceGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
+    fireEvent.click(screen.getByRole("button", { name: "共鸣候选：我的除夕 ↔ 妈妈的除夕" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂不确认 / 拒绝" }));
+
+    await expect(screen.findByText("已拒绝这条共鸣候选。"))
+      .resolves.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/resonances/resonance-eve/confirm",
+      expect.objectContaining({
+        body: JSON.stringify({ status: "rejected", version: 3 }),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
+    expect(document.querySelector('[data-link-id="resonance-eve"]')).not.toBeInTheDocument();
   });
 });

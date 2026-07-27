@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const { auth } = vi.hoisted(() => ({
@@ -92,6 +92,27 @@ describe("GalaxyPage", () => {
           visibility: "family",
           summary: "只包含安全展示字段。",
         },
+        {
+          id: "server-memory-2",
+          planetId: "server-self",
+          title: "服务端确认的团圆",
+          occurredAt: "2018 年除夕",
+          location: "新房",
+          people: ["妈妈", "我"],
+          emotions: [],
+          visibility: "private",
+          summary: "另一条安全展示记忆。",
+        },
+      ],
+      pendingResonances: [
+        {
+          id: "server-pending-resonance",
+          sourceMemoryId: "server-memory-1",
+          targetMemoryId: "server-memory-2",
+          score: 0.88,
+          reason: "两条已确认记忆指向同一次团圆。",
+          version: 2,
+        },
       ],
     });
 
@@ -101,5 +122,7 @@ describe("GalaxyPage", () => {
     expect(screen.getByRole("button", { name: "进入服务器星球漫游" })).toBeInTheDocument();
     expect(screen.getByTestId("planet-link-server-link")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "新点亮：服务端确认的除夕" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
+    expect(screen.getByRole("button", { name: "共鸣候选：服务端确认的除夕 ↔ 服务端确认的团圆" })).toBeInTheDocument();
   });
 });

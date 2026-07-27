@@ -5,7 +5,6 @@ import { useState } from "react";
 import type {
   BookGenerateRequest,
   BookGenerateResponse,
-  ResonanceScanResponse,
 } from "@/shared/types/galaxy";
 
 async function postJson<T>(url: string, body: unknown, errorMessage: string): Promise<T> {
@@ -20,14 +19,6 @@ async function postJson<T>(url: string, body: unknown, errorMessage: string): Pr
   }
 
   return (await response.json()) as T;
-}
-
-export function scanResonance(memoryId: string): Promise<ResonanceScanResponse> {
-  return postJson<ResonanceScanResponse>(
-    "/api/intersections/scan",
-    { memoryId },
-    "共鸣扫描失败，请稍后重试",
-  );
 }
 
 export function generateBook(request: BookGenerateRequest): Promise<BookGenerateResponse> {

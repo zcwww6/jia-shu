@@ -28,7 +28,6 @@ import {
   galaxyZones,
   memoryStars,
   planetLinks,
-  resonanceTracks,
   storyNodes,
 } from "@/shared/mock/galaxy-data";
 import {
@@ -40,22 +39,23 @@ import {
   type Planet,
   type PlanetLink,
   type PlanetLinkKind,
-  type ResonanceScanResponse,
 } from "@/shared/types/galaxy";
 
 import {
   readGalaxyBookResult,
-  readGalaxyResonanceResult,
   writeGalaxyBookResult,
-  writeGalaxyResonanceResult,
   writeGalaxySharePayload,
 } from "@/features/demo-loop/storage";
 import {
   generateBook,
   publishBook,
-  scanResonance,
   useLoopApi,
 } from "./use-loop-api";
+import {
+  confirmLegacyResonance,
+  scanLegacyResonances,
+  type LegacyPendingResonance,
+} from "./legacy-resonance-api";
 import {
   confirmLegacyMemory,
   createLegacyMemoryDraft,
@@ -155,6 +155,17 @@ const memoryPollDelayMs = 250;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "请求失败，请稍后重试。";
+}
+
+function resonanceCandidateLabel(candidate: LegacyPendingResonance, memories: MemoryStar[]) {
+  const source = memories.find((memory) => memory.id === candidate.sourceMemoryId);
+  const target = memories.find((memory) => memory.id === candidate.targetMemoryId);
+
+  return `共鸣候选：${source?.title ?? "来源记忆"} ↔ ${target?.title ?? "目标记忆"}`;
+}
+
+function safeMemorySummary(memory: MemoryStar | null) {
+  return memory?.summary.trim() || "这条已确认记忆暂未填写摘要。";
 }
 
 type MemoryPollingControl = {
@@ -394,11 +405,13 @@ export function GalaxyWorkspace({
   initialLinks = planetLinks,
   initialArchivedPlanets = [],
   initialConfirmedMemories = [],
+  initialPendingResonances = [],
 }: {
   initialPlanets?: Planet[];
   initialLinks?: PlanetLink[];
   initialArchivedPlanets?: Planet[];
   initialConfirmedMemories?: MemoryStar[];
+  initialPendingResonances?: LegacyPendingResonance[];
 }) {
   const startingPlanets = initialPlanets ?? [];
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
@@ -442,14 +455,17 @@ export function GalaxyWorkspace({
   const memoryDraftContextRef = useRef<MemoryDraftContext | null>(null);
   const memoryJobRequestRef = useRef<{ draftId: string; key: string } | null>(null);
 
-  // 共鸣与家书仍保留旧演示状态；文字记忆改用草稿→AI 作业→人工确认的持久化流程。
+  // 家书仍保留旧演示状态；文字记忆和共鸣候选均走真实持久化流程。
   const [quickRecordContent, setQuickRecordContent] = useState(
     "2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。",
   );
   const [extractResult, setExtractResult] = useState<MemoryExtractResponse | null>(null);
-  const [resonanceResult, setResonanceResult] = useState<ResonanceScanResponse | null>(
-    () => readGalaxyResonanceResult(),
-  );
+  const [pendingResonances, setPendingResonances] = useState<LegacyPendingResonance[]>(initialPendingResonances);
+  const [selectedResonanceId, setSelectedResonanceId] = useState<string | null>(null);
+  const [resonanceLoading, setResonanceLoading] = useState(false);
+  const [resonanceError, setResonanceError] = useState<string | null>(null);
+  const [resonanceDecisionMessage, setResonanceDecisionMessage] = useState<string | null>(null);
+  const [confirmedResonanceSourceMemoryIds, setConfirmedResonanceSourceMemoryIds] = useState<string[] | null>(null);
   const [bookResult, setBookResult] = useState<BookGenerateResponse | null>(
     () => readGalaxyBookResult(),
   );
@@ -516,6 +532,22 @@ export function GalaxyWorkspace({
     : "点亮为记忆星";
   const selectedMemory = selectedMemoryId
     ? litMemories.find((memory) => memory.id === selectedMemoryId) ?? null
+    : null;
+  const selectedResonance = selectedResonanceId
+    ? pendingResonances.find((candidate) => candidate.id === selectedResonanceId) ?? null
+    : null;
+  const activeResonance = selectedResonance ?? pendingResonances[0] ?? null;
+  const resonanceSourceMemory = activeResonance
+    ? litMemories.find((memory) => memory.id === activeResonance.sourceMemoryId) ?? null
+    : null;
+  const resonanceTargetMemory = activeResonance
+    ? litMemories.find((memory) => memory.id === activeResonance.targetMemoryId) ?? null
+    : null;
+  const resonanceSourcePlanet = resonanceSourceMemory
+    ? galaxyPlanets.find((planet) => planet.id === resonanceSourceMemory.planetId) ?? null
+    : null;
+  const resonanceTargetPlanet = resonanceTargetMemory
+    ? galaxyPlanets.find((planet) => planet.id === resonanceTargetMemory.planetId) ?? null
     : null;
 
   function abortMemoryFlowOperation() {
@@ -912,27 +944,133 @@ export function GalaxyWorkspace({
   }
 
   async function scanResonanceStar() {
-    const sourceMemory = selectedMemory ?? extractResult?.memory;
+    const sourceMemory = selectedMemory;
     if (!sourceMemory) {
-      setToast("请先确认一条本次会话中的记忆星，再扫描共鸣");
+      setResonanceError("请先打开一颗已确认的记忆星，再扫描共鸣。");
       return false;
     }
 
-    const result = await loopApi.run(() => scanResonance(sourceMemory.id));
-    if (!result) {
-      setToast(loopApi.error ?? "共鸣扫描失败，请稍后重试");
+    setResonanceLoading(true);
+    setResonanceError(null);
+    setResonanceDecisionMessage(null);
+    setConfirmedResonanceSourceMemoryIds(null);
+    try {
+      const result = await scanLegacyResonances(sourceMemory.id);
+      const candidates = result.candidates.filter((candidate) => candidate.status === "candidate");
+      if (candidates.length === 0) {
+        setResonanceError("暂未找到可确认的共鸣星轨。");
+        return false;
+      }
+
+      setPendingResonances((current) => {
+        const merged = new Map(current.map((candidate) => [candidate.id, candidate]));
+        candidates.forEach((candidate) => merged.set(candidate.id, {
+          id: candidate.id,
+          sourceMemoryId: candidate.sourceMemoryId,
+          targetMemoryId: candidate.targetMemoryId,
+          score: candidate.score,
+          reason: candidate.reason,
+          version: candidate.version,
+        }));
+        return [...merged.values()];
+      });
+      setSelectedResonanceId(candidates[0].id);
+      return true;
+    } catch (error) {
+      setResonanceError(errorMessage(error));
+      return false;
+    } finally {
+      setResonanceLoading(false);
+    }
+  }
+
+  async function decideResonanceCandidate(status: "confirmed" | "rejected") {
+    const candidate = activeResonance;
+    if (!candidate) {
+      setResonanceError("当前没有可处理的共鸣候选。");
       return false;
     }
-    setResonanceResult(result);
-    writeGalaxyResonanceResult(result);
-    return true;
+
+    setResonanceLoading(true);
+    setResonanceError(null);
+    setResonanceDecisionMessage(null);
+    try {
+      const decided = await confirmLegacyResonance({
+        id: candidate.id,
+        status,
+        version: candidate.version,
+      });
+      if (decided.status !== status) {
+        throw new Error("共鸣候选状态未更新，请刷新后重试。");
+      }
+
+      setPendingResonances((current) => current.filter((item) => item.id !== candidate.id));
+      setSelectedResonanceId((current) => (
+        current === candidate.id ? null : current
+      ));
+
+      if (status === "rejected") {
+        setResonanceDecisionMessage("已拒绝这条共鸣候选。");
+        setToast("已拒绝这条共鸣候选");
+        return true;
+      }
+
+      const sourceMemory = litMemories.find((memory) => memory.id === candidate.sourceMemoryId) ?? null;
+      const targetMemory = litMemories.find((memory) => memory.id === candidate.targetMemoryId) ?? null;
+      const sourcePlanetId = sourceMemory?.planetId;
+      const targetPlanetId = targetMemory?.planetId;
+      const linkAlreadyVisible = galaxyLinks.some((link) => link.id === decided.id);
+
+      if (sourcePlanetId && targetPlanetId && !linkAlreadyVisible) {
+        setGalaxyLinks((current) => (
+          current.some((link) => link.id === decided.id)
+            ? current
+            : [
+              ...current,
+              {
+                id: decided.id,
+                sourcePlanetId,
+                targetPlanetId,
+                kind: "resonance",
+                status: "confirmed",
+                label: candidate.reason,
+                visibility: "family",
+                strength: candidate.score,
+                rule: "sharedMemory",
+              },
+            ]
+        ));
+        const linkedPlanetIds = new Set([sourcePlanetId, targetPlanetId]);
+        setGalaxyPlanets((current) => current.map((planet) => (
+          linkedPlanetIds.has(planet.id)
+            ? {
+              ...planet,
+              stats: { ...planet.stats, resonanceTracks: planet.stats.resonanceTracks + 1 },
+            }
+            : planet
+        )));
+      }
+
+      setResonanceDecisionMessage("已确认这条星轨，可进入家书工坊。");
+      setConfirmedResonanceSourceMemoryIds([candidate.sourceMemoryId, candidate.targetMemoryId]);
+      setToast("共鸣星轨已确认");
+      return true;
+    } catch (error) {
+      setResonanceError(errorMessage(error));
+      return false;
+    } finally {
+      setResonanceLoading(false);
+    }
   }
 
   async function generateBookDraft() {
+    if (!confirmedResonanceSourceMemoryIds) {
+      setToast("请先确认一条共鸣星轨，再进入家书工坊。");
+      return false;
+    }
     // 乐观反馈：先标记已生成，再用真实响应丰富内容（失败时回落静态草稿）。
     setBookGenerated(true);
-    const sourceMemoryIds =
-      resonanceResult?.candidate.sourceMemoryIds ?? bookDrafts[0].sourceMemoryIds;
+    const sourceMemoryIds = confirmedResonanceSourceMemoryIds;
     const result = await loopApi.run(() =>
       generateBook({
         sourceMemoryIds,
@@ -1505,7 +1643,11 @@ export function GalaxyWorkspace({
               activeZone={activeZone}
               bookGenerated={bookGenerated}
               bookResult={bookResult}
-              resonanceResult={resonanceResult}
+              resonanceCandidate={activeResonance}
+              resonanceSourceMemory={resonanceSourceMemory}
+              resonanceTargetMemory={resonanceTargetMemory}
+              resonanceSourcePlanet={resonanceSourcePlanet}
+              resonanceTargetPlanet={resonanceTargetPlanet}
               litMemories={litMemories}
               anchorPlanetIds={anchorPlanetIds}
               onGenerateBook={() => {
@@ -1585,7 +1727,6 @@ export function GalaxyWorkspace({
         <SidePanel
           activePanel={activePanel}
           extractResult={extractResult}
-          resonanceResult={resonanceResult}
           bookResult={bookResult}
           quickRecordContent={quickRecordContent}
           loading={loopApi.loading || memoryFlowLoading}
@@ -1597,6 +1738,12 @@ export function GalaxyWorkspace({
           reviewTitle={reviewTitle}
           selectedMemory={selectedMemory}
           selectedMemoryId={selectedMemoryId}
+          resonanceCandidate={activeResonance}
+          resonanceSourceMemory={resonanceSourceMemory}
+          resonanceTargetMemory={resonanceTargetMemory}
+          resonanceError={resonanceError}
+          resonanceDecisionMessage={resonanceDecisionMessage}
+          resonanceLoading={resonanceLoading}
           onClose={closeActivePanel}
           onGo={goToZone}
           onLightMemory={lightMemoryStar}
@@ -1610,6 +1757,7 @@ export function GalaxyWorkspace({
             void retryMemoryExtraction();
           }}
           onScanResonance={scanResonanceStar}
+          onDecideResonance={decideResonanceCandidate}
           onPersistPlanetChange={persistPlanetChange}
           onConfirmShare={() => {
             void confirmShare();
@@ -1696,7 +1844,11 @@ function ZoneScene({
   anchorPlanetIds,
   bookGenerated,
   bookResult,
-  resonanceResult,
+  resonanceCandidate,
+  resonanceSourceMemory,
+  resonanceTargetMemory,
+  resonanceSourcePlanet,
+  resonanceTargetPlanet,
   litMemories,
   closingPlanetId,
   onGenerateBook,
@@ -1736,7 +1888,11 @@ function ZoneScene({
   };
   bookGenerated: boolean;
   bookResult: BookGenerateResponse | null;
-  resonanceResult: ResonanceScanResponse | null;
+  resonanceCandidate: LegacyPendingResonance | null;
+  resonanceSourceMemory: MemoryStar | null;
+  resonanceTargetMemory: MemoryStar | null;
+  resonanceSourcePlanet: Planet | null;
+  resonanceTargetPlanet: Planet | null;
   litMemories: MemoryStar[];
   closingPlanetId: string | null;
   onGenerateBook: () => void;
@@ -1954,36 +2110,72 @@ function ZoneScene({
   }
 
   if (activeZone === "resonance") {
+    if (!resonanceCandidate) {
+      return (
+        <>
+          <div className="orbit memory-orbit" />
+          <div className="scene-empty-state" role="status">
+            暂无待确认的共鸣候选。请从一颗已确认的记忆星发起扫描。
+          </div>
+          <SceneHint
+            subtitle="AI 只会返回真实记忆之间的候选连接，是否形成星轨由家人决定"
+            title="共鸣不是猜测，是等待确认的共同记忆"
+          />
+        </>
+      );
+    }
+
+    const candidateLabel = resonanceCandidateLabel(resonanceCandidate, litMemories);
     return (
       <>
         <svg className="links" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
           <path className="link-public" d="M285 350 C420 250 580 250 715 350" />
           <path className="link-private" d="M285 350 C420 450 580 450 715 350" />
         </svg>
-        <ScenePlanetButton
-          badge="家"
-          className="mom public-planet has-ring"
-          label="妈妈的星球"
-          left="28.5%"
-          onClick={() => onOpenPlanet(anchorPlanetIds.parent)}
-          top="50%"
-        />
-        <ScenePlanetButton
-          badge="私"
-          className="me private-planet"
-          label="我的星球"
-          left="71.5%"
-          onClick={() => onOpenPlanet(anchorPlanetIds.self)}
-          top="50%"
-        />
+        {resonanceSourcePlanet ? (
+          <ScenePlanetButton
+            badge={planetBadgeByType[getPlanetPresentationType(resonanceSourcePlanet)]}
+            className={planetClassByType[getPlanetPresentationType(resonanceSourcePlanet)]}
+            label={resonanceSourcePlanet.name}
+            left="28.5%"
+            onClick={() => onOpenPlanet(resonanceSourcePlanet.id)}
+            top="50%"
+          />
+        ) : null}
+        {resonanceTargetPlanet ? (
+          <ScenePlanetButton
+            badge={planetBadgeByType[getPlanetPresentationType(resonanceTargetPlanet)]}
+            className={planetClassByType[getPlanetPresentationType(resonanceTargetPlanet)]}
+            label={resonanceTargetPlanet.name}
+            left="71.5%"
+            onClick={() => onOpenPlanet(resonanceTargetPlanet.id)}
+            top="50%"
+          />
+        ) : null}
         <SparkButton
-          label={resonanceResult?.candidate.title ?? "2018 除夕共鸣星轨"}
+          label={candidateLabel}
           left="50%"
           onClick={() => onOpenPanel("resonance")}
           top="45%"
         />
-        <MemoryButton label="妈妈的除夕记忆" left="39%" onClick={() => onOpenPanel("memory1")} top="38%" variant="coral" />
-        <MemoryButton label="我的除夕记忆" left="61%" onClick={() => onOpenPanel("memory1")} top="38%" variant="blue" />
+        {resonanceSourceMemory ? (
+          <MemoryButton
+            label={resonanceSourceMemory.title}
+            left="39%"
+            onClick={() => onOpenConfirmedMemory(resonanceSourceMemory.id)}
+            top="38%"
+            variant="coral"
+          />
+        ) : null}
+        {resonanceTargetMemory ? (
+          <MemoryButton
+            label={resonanceTargetMemory.title}
+            left="61%"
+            onClick={() => onOpenConfirmedMemory(resonanceTargetMemory.id)}
+            top="38%"
+            variant="blue"
+          />
+        ) : null}
         <SceneHint
           subtitle="AI 只点亮候选连接，故事是否成立由家人确认"
           title="两颗星球之间，不是合并，而是共鸣"
@@ -2188,6 +2380,7 @@ function PlanetLinkField({ links, planets }: { links: PlanetLink[]; planets: Pla
         return (
           <path
             className={className}
+            data-link-id={link.id}
             data-testid={`planet-link-${link.id}`}
             d={`M${x1} ${y1} Q${controlX} ${controlY} ${x2} ${y2}`}
             key={link.id}
@@ -2688,7 +2881,6 @@ function ViewControls({
 function SidePanel({
   activePanel,
   extractResult,
-  resonanceResult,
   bookResult,
   quickRecordContent,
   loading,
@@ -2700,6 +2892,12 @@ function SidePanel({
   reviewTitle,
   selectedMemory,
   selectedMemoryId,
+  resonanceCandidate,
+  resonanceSourceMemory,
+  resonanceTargetMemory,
+  resonanceError,
+  resonanceDecisionMessage,
+  resonanceLoading,
   shareUrl,
   onClose,
   onGo,
@@ -2710,6 +2908,7 @@ function SidePanel({
   onReviewTitleChange,
   onRetryMemoryExtraction,
   onScanResonance,
+  onDecideResonance,
   onPersistPlanetChange,
   onConfirmShare,
   onOpenPanel,
@@ -2719,7 +2918,6 @@ function SidePanel({
 }: {
   activePanel: PanelKey | null;
   extractResult: MemoryExtractResponse | null;
-  resonanceResult: ResonanceScanResponse | null;
   bookResult: BookGenerateResponse | null;
   quickRecordContent: string;
   loading: boolean;
@@ -2731,6 +2929,12 @@ function SidePanel({
   reviewTitle: string;
   selectedMemory: MemoryStar | null;
   selectedMemoryId: string | null;
+  resonanceCandidate: LegacyPendingResonance | null;
+  resonanceSourceMemory: MemoryStar | null;
+  resonanceTargetMemory: MemoryStar | null;
+  resonanceError: string | null;
+  resonanceDecisionMessage: string | null;
+  resonanceLoading: boolean;
   shareUrl: string | null;
   onClose: () => void;
   onGo: (zone: GalaxyZoneKey) => void;
@@ -2741,6 +2945,7 @@ function SidePanel({
   onReviewTitleChange: (value: string) => void;
   onRetryMemoryExtraction: () => void;
   onScanResonance: () => Promise<boolean>;
+  onDecideResonance: (status: "confirmed" | "rejected") => Promise<boolean>;
   onPersistPlanetChange: (planet: Planet, changes: LegacyPlanetChanges) => Promise<boolean>;
   onConfirmShare: () => void;
   onOpenPanel: (key: PanelKey) => void;
@@ -2749,7 +2954,6 @@ function SidePanel({
   selectedPlanet: Planet | null;
 }) {
   const mockMemory = extractResult?.memory ?? memoryStars[0];
-  const track = resonanceResult?.candidate ?? resonanceTracks[0];
   const book = bookResult?.draft ?? bookDrafts[0];
   const memoryKey = activePanel as MemoryPanelKey;
 
@@ -2809,9 +3013,15 @@ function SidePanel({
                   {`时间：${selectedMemory.occurredAt || "未填写"}。地点：${selectedMemory.location || "未填写"}。人物：${selectedMemory.people.join("、") || "未填写"}。情绪：${selectedMemory.emotions.join("、") || "暂无"}。`}
                 </p>
               </div>
+              {resonanceError ? (
+                <div className="ai-card" role="alert">
+                  <p>{resonanceError}</p>
+                </div>
+              ) : null}
               <div className="big-actions">
                 <button
                   className="primary"
+                  disabled={resonanceLoading}
                   onClick={async () => {
                     if (!(await onScanResonance())) return;
                     onGo("resonance");
@@ -2819,7 +3029,7 @@ function SidePanel({
                   }}
                   type="button"
                 >
-                  沿共鸣星轨前进
+                  {resonanceLoading ? "正在扫描共鸣…" : "沿共鸣星轨前进"}
                 </button>
                 <button className="secondary" onClick={() => onOpenPanel("quickRecord")} type="button">
                   补充另一个视角
@@ -2853,17 +3063,9 @@ function SidePanel({
             </div>
             <div className="big-actions">
               {activePanel === "memory1" ? (
-                <button
-                  className="primary"
-                  onClick={async () => {
-                    if (!(await onScanResonance())) return;
-                    onGo("resonance");
-                    onClose();
-                  }}
-                  type="button"
-                >
-                  沿共鸣星轨前进
-                </button>
+                <p className="panel-readonly">
+                  请从一颗已确认的记忆星发起共鸣扫描。
+                </p>
               ) : null}
               {activePanel === "memory3" ? (
                 <button className="primary" onClick={() => onSelectTheme("旅行星云")} type="button">
@@ -2884,64 +3086,81 @@ function SidePanel({
       ) : null}
 
       {activePanel === "resonance" ? (
-        <>
-          <h2>{track.title}</h2>
-          <div className="tags">
-            <span className="tag public">待家人确认</span>
-            <span className="tag">匹配度 {Math.round(track.score * 100)}%</span>
-          </div>
-          <p>{track.reason}</p>
-          <div className="source-pair">
-            <div className="source-card">
-              <strong>妈妈的记忆</strong>
-              <p>看着孩子们围坐在桌前，觉得一天的劳累都值了。</p>
+        resonanceCandidate ? (
+          <>
+            <h2>共鸣候选</h2>
+            <div className="tags">
+              <span className="tag public">待家人确认</span>
+              <span className="tag">匹配度 {Math.round(resonanceCandidate.score * 100)}%</span>
             </div>
-            <div className="source-card">
-              <strong>我的记忆</strong>
-              <p>妈妈端出最后一盘饺子，那是我们在新城市真正扎根的一刻。</p>
-            </div>
-          </div>
-          <h3>为什么形成星轨</h3>
-          <div className="match-list">
-            {(resonanceResult
-              ? ([
-                  ["时间", Math.round(resonanceResult.breakdown.time * 100)],
-                  ["人物", Math.round(resonanceResult.breakdown.people * 100)],
-                  ["地点", Math.round(resonanceResult.breakdown.location * 100)],
-                  ["语义", Math.round(resonanceResult.breakdown.semantic * 100)],
-                ] as const)
-              : ([
-                  ["时间", 95],
-                  ["人物", 92],
-                  ["地点", 88],
-                  ["语义", 90],
-                ] as const)
-            ).map(([label, score]) => (
-              <div className="match-row" key={label}>
-                <span>{label}</span>
-                <div className="match-bar">
-                  <i style={{ width: `${score}%` }} />
-                </div>
-                <strong>{score}%</strong>
+            <p>{resonanceCandidate.reason}</p>
+            <div className="source-pair">
+              <div className="source-card">
+                <strong>{resonanceSourceMemory?.title ?? "来源记忆"}</strong>
+                <p>{safeMemorySummary(resonanceSourceMemory)}</p>
               </div>
-            ))}
-          </div>
-          <div className="big-actions">
-            <button
-              className="primary"
-              onClick={() => {
-                onGo("books");
-                onClose();
-              }}
-              type="button"
-            >
-              把这条星轨写成家书
-            </button>
-            <button className="secondary" onClick={onClose} type="button">
-              先保留候选
-            </button>
-          </div>
-        </>
+              <div className="source-card">
+                <strong>{resonanceTargetMemory?.title ?? "目标记忆"}</strong>
+                <p>{safeMemorySummary(resonanceTargetMemory)}</p>
+              </div>
+            </div>
+            <h3>AI 给出的候选理由</h3>
+            <div className="ai-card">
+              <p>这是一条待确认的候选连接，不会在确认前进入家书工坊或画入家庭星图。</p>
+            </div>
+            {resonanceError ? (
+              <div className="ai-card" role="alert">
+                <p>{resonanceError}</p>
+              </div>
+            ) : null}
+            <div className="big-actions">
+              <button
+                className="primary"
+                disabled={resonanceLoading}
+                onClick={() => {
+                  void onDecideResonance("confirmed");
+                }}
+                type="button"
+              >
+                {resonanceLoading ? "确认中…" : "确认这条星轨"}
+              </button>
+              <button
+                className="secondary"
+                disabled={resonanceLoading}
+                onClick={() => {
+                  void onDecideResonance("rejected");
+                }}
+                type="button"
+              >
+                暂不确认 / 拒绝
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2>共鸣候选</h2>
+            <p>{resonanceDecisionMessage ?? "当前没有待确认的共鸣候选。"}</p>
+            {resonanceError ? (
+              <div className="ai-card" role="alert">
+                <p>{resonanceError}</p>
+              </div>
+            ) : null}
+            {resonanceDecisionMessage === "已确认这条星轨，可进入家书工坊。" ? (
+              <div className="big-actions">
+                <button
+                  className="primary"
+                  onClick={() => {
+                    onGo("books");
+                    onClose();
+                  }}
+                  type="button"
+                >
+                  进入家书工坊
+                </button>
+              </div>
+            ) : null}
+          </>
+        )
       ) : null}
 
       {activePanel === "book" ? (
@@ -3568,7 +3787,7 @@ function PlanetRoamingOverlay({
               <strong>{planet.stats.memoryStars}</strong>
               记忆星
             </span>
-            <span>
+            <span aria-label={`星球 ${planet.name} 共鸣星轨 ${planet.stats.resonanceTracks} 条`}>
               <strong>{planet.stats.resonanceTracks}</strong>
               星轨
             </span>

@@ -17,6 +17,7 @@ export default async function GalaxyPage() {
       initialArchivedPlanets={homeData.archivedPlanets}
       initialConfirmedMemories={homeData.confirmedMemories}
       initialLinks={homeData.relationships}
+      initialPendingResonances={homeData.pendingResonances}
       initialPlanets={homeData.planets}
     />
   );

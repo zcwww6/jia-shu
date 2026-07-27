@@ -519,8 +519,8 @@ describe("GalaxyWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-resonance");
-    expect(screen.getByText("两颗星球之间，不是合并，而是共鸣")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "2018 除夕共鸣星轨" })).toBeInTheDocument();
+    expect(screen.getByText("暂无待确认的共鸣候选。请从一颗已确认的记忆星发起扫描。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "2018 除夕共鸣星轨" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes");
@@ -535,22 +535,15 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByRole("button", { name: "生成家书草稿" })).toBeInTheDocument();
   });
 
-  it("lets users complete the demo path from resonance to book share", () => {
+  it("does not treat a static resonance scene as a source for the book workflow", () => {
     renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
-    expect(screen.getByText("两颗星球之间，不是合并，而是共鸣")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "2018 除夕共鸣星轨" }));
-    fireEvent.click(screen.getByRole("button", { name: "把这条星轨写成家书" }));
-    expect(screen.getByText("把星系里的光，整理成一页可以分享的家书")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "生成家书草稿" }));
-    expect(screen.getByText("家书草稿已生成")).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: "分享前确认" }));
-    expect(screen.getByRole("dialog", { name: "分享前确认" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成家书草稿" }));
+
+    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
+    expect(screen.getByText("等待生成")).toBeInTheDocument();
   });
 
   it("opens the planet roaming overlay from the recommended route", () => {
