@@ -5,9 +5,7 @@ import { useState } from "react";
 import type {
   BookGenerateRequest,
   BookGenerateResponse,
-  MemoryExtractResponse,
   ResonanceScanResponse,
-  Visibility,
 } from "@/shared/types/galaxy";
 
 async function postJson<T>(url: string, body: unknown, errorMessage: string): Promise<T> {
@@ -22,14 +20,6 @@ async function postJson<T>(url: string, body: unknown, errorMessage: string): Pr
   }
 
   return (await response.json()) as T;
-}
-
-export function extractMemory(input: {
-  planetId: string;
-  visibility: Visibility;
-  content: string;
-}): Promise<MemoryExtractResponse> {
-  return postJson<MemoryExtractResponse>("/api/ai/extract", input, "AI 整理失败，请稍后重试");
 }
 
 export function scanResonance(memoryId: string): Promise<ResonanceScanResponse> {

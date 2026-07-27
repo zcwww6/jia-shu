@@ -32,7 +32,6 @@ import {
   resonanceTracks,
   storyNodes,
 } from "@/shared/mock/galaxy-data";
-import { demoSession } from "@/shared/mock/demo-session";
 import {
   getPlanetPresentationType,
   type BookGenerateResponse,
@@ -46,23 +45,29 @@ import {
 } from "@/shared/types/galaxy";
 
 import {
-  appendLitMemory,
   readGalaxyBookResult,
   readGalaxyExtractResult,
   readGalaxyResonanceResult,
   readLitMemories,
   writeGalaxyBookResult,
-  writeGalaxyExtractResult,
   writeGalaxyResonanceResult,
   writeGalaxySharePayload,
 } from "@/features/demo-loop/storage";
 import {
-  extractMemory,
   generateBook,
   publishBook,
   scanResonance,
   useLoopApi,
 } from "./use-loop-api";
+import {
+  confirmLegacyMemory,
+  createLegacyMemoryDraft,
+  getLegacyMemoryAiJob,
+  getLegacyMemoryReview,
+  startLegacyMemoryExtraction,
+  type LegacyMemoryAiJob,
+  type LegacyMemoryResponse,
+} from "./legacy-memory-api";
 import {
   archiveLegacyPlanet,
   createLegacyPlanet,
@@ -147,6 +152,41 @@ const planetClassByType: Record<Planet["type"], string> = {
   partner: "planet friend has-ring",
   other: "planet friend has-ring",
 };
+
+const memoryPollAttempts = 20;
+const memoryPollDelayMs = 250;
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "请求失败，请稍后重试。";
+}
+
+export function shouldStartNewMemoryExtraction(job: LegacyMemoryAiJob | null) {
+  return job === null || job.status === "failed";
+}
+
+async function waitForMemoryExtraction(
+  initialJob: LegacyMemoryAiJob,
+  onJobUpdate: (job: LegacyMemoryAiJob) => void,
+) {
+  let job = initialJob;
+  onJobUpdate(job);
+
+  for (let attempt = 0; attempt < memoryPollAttempts; attempt += 1) {
+    if (job.status === "completed") return;
+    if (job.status === "failed") {
+      throw new Error(job.error ?? job.errorCode ?? "AI 整理失败，请稍后重试。");
+    }
+    if (job.status !== "queued" && job.status !== "processing") {
+      throw new Error("AI 作业状态异常，请稍后重试。");
+    }
+
+    await new Promise<void>((resolve) => window.setTimeout(resolve, memoryPollDelayMs));
+    job = await getLegacyMemoryAiJob(job.id);
+    onJobUpdate(job);
+  }
+
+  throw new Error("AI 整理仍在进行中，请稍后重试。");
+}
 
 const planetBadgeByType: Record<Planet["type"], string> = {
   self: "我",
@@ -308,7 +348,7 @@ function toVisualPlanet(result: LegacyManagedPlanet, fallback: Planet): Planet {
 }
 
 export function GalaxyWorkspace({
-  initialPlanets = planets,
+  initialPlanets,
   initialLinks = planetLinks,
   initialArchivedPlanets = [],
 }: {
@@ -316,6 +356,7 @@ export function GalaxyWorkspace({
   initialLinks?: PlanetLink[];
   initialArchivedPlanets?: Planet[];
 }) {
+  const startingPlanets = initialPlanets ?? planets;
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
   const [activeRouteStep, setActiveRouteStep] = useState(0);
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
@@ -338,7 +379,7 @@ export function GalaxyWorkspace({
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<GalaxyView>(initialView);
   const [isDragging, setIsDragging] = useState(false);
-  const [galaxyPlanets, setGalaxyPlanets] = useState<Planet[]>(initialPlanets);
+  const [galaxyPlanets, setGalaxyPlanets] = useState<Planet[]>(startingPlanets);
   const [hiddenPlanetIds, setHiddenPlanetIds] = useState<string[]>([]);
   const [archivedPlanets, setArchivedPlanets] = useState<Planet[]>(initialArchivedPlanets);
   const [galaxyLinks, setGalaxyLinks] = useState<PlanetLink[]>(initialLinks);
@@ -353,7 +394,7 @@ export function GalaxyWorkspace({
   const [starMapEditorOpen, setStarMapEditorOpen] = useState(false);
   const dragStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
 
-  // 星系内闭环真实数据（接 /api/*），初值从 localStorage 读取以支持刷新存活。
+  // 共鸣与家书仍保留旧演示状态；文字记忆改用草稿→AI 作业→人工确认的持久化流程。
   const [quickRecordContent, setQuickRecordContent] = useState(
     "2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。",
   );
@@ -367,6 +408,14 @@ export function GalaxyWorkspace({
     () => readGalaxyBookResult(),
   );
   const [litMemories, setLitMemories] = useState<MemoryStar[]>(() => readLitMemories());
+  const [quickRecordTargetPlanetId, setQuickRecordTargetPlanetId] = useState<string | null>(null);
+  const [memoryReview, setMemoryReview] = useState<LegacyMemoryResponse | null>(null);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewSummary, setReviewSummary] = useState("");
+  const [memoryDraftId, setMemoryDraftId] = useState<string | null>(null);
+  const [memoryJob, setMemoryJob] = useState<LegacyMemoryAiJob | null>(null);
+  const [memoryFlowLoading, setMemoryFlowLoading] = useState(false);
+  const [memoryFlowError, setMemoryFlowError] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const loopApi = useLoopApi();
 
@@ -405,6 +454,7 @@ export function GalaxyWorkspace({
   }, [galaxyPlanets]);
   const selectedPlanet = galaxyPlanets.find((planet) => planet.id === selectedPlanetId) ?? null;
   const roamingPlanet = galaxyPlanets.find((planet) => planet.id === roamingPlanetId) ?? null;
+  const quickRecordTarget = galaxyPlanets.find((planet) => planet.id === quickRecordTargetPlanetId) ?? null;
 
   const galaxyStyle = useMemo(
     () =>
@@ -477,6 +527,23 @@ export function GalaxyWorkspace({
   }
 
   function openPanel(key: PanelKey) {
+    if (key === "quickRecord") {
+      const target =
+        galaxyPlanets.find((planet) => planet.id === selectedPlanetId || planet.id === roamingPlanetId) ??
+        galaxyPlanets.find((planet) => planet.type === "self") ??
+        null;
+
+      if (!target) {
+        setToast("请先选择一颗已保存的星球，再记录这段记忆");
+        return;
+      }
+
+      setQuickRecordTargetPlanetId(target.id);
+      setMemoryReview(null);
+      setMemoryDraftId(null);
+      setMemoryJob(null);
+      setMemoryFlowError(null);
+    }
     setActivePanel(key);
     setRoamingPlanetId(null);
     setSelectedPlanetId(null);
@@ -507,28 +574,120 @@ export function GalaxyWorkspace({
       return;
     }
 
-    const result = await loopApi.run(() =>
-      extractMemory({
-        planetId: demoSession.defaultPlanetId,
-        visibility: "family",
-        content,
-      }),
-    );
-
-    if (!result) {
-      setToast(loopApi.error ?? "AI 整理失败，请稍后重试");
+    if (!quickRecordTarget) {
+      setMemoryFlowError("请先选择一颗已保存的星球，再记录这段记忆");
       return;
     }
 
-    setExtractResult(result);
-    writeGalaxyExtractResult(result);
-    setLitMemories(appendLitMemory(result.memory));
+    setMemoryFlowLoading(true);
+    setMemoryFlowError(null);
+    try {
+      const draft = await createLegacyMemoryDraft({
+        planetId: quickRecordTarget.id,
+        sourceText: content,
+        visibility: "family",
+        allowResonance: true,
+        allowBook: true,
+      });
+      setMemoryDraftId(draft.id);
+      await requestMemoryReview(draft.id);
+    } catch (error) {
+      setMemoryFlowError(errorMessage(error));
+    } finally {
+      setMemoryFlowLoading(false);
+    }
+  }
 
-    setActivePanel("memory1");
-    setActiveZone("memories");
-    setSelectedPlanetId(null);
-    setClosingPlanetId(null);
-    setToast("已点亮为记忆星，默认不公开");
+  async function requestMemoryReview(draftId: string, existingJob: LegacyMemoryAiJob | null = null) {
+    const job = existingJob && !shouldStartNewMemoryExtraction(existingJob)
+      ? existingJob
+      : await startLegacyMemoryExtraction(draftId);
+    setMemoryJob(job);
+    await waitForMemoryExtraction(job, setMemoryJob);
+    const review = await getLegacyMemoryReview(draftId);
+    if (review.status !== "needs_confirmation") {
+      throw new Error("记忆尚未准备好确认，请稍后重试。");
+    }
+    setMemoryReview(review);
+    setReviewTitle(review.title ?? "");
+    setReviewSummary(review.summary ?? "");
+  }
+
+  async function retryMemoryExtraction() {
+    if (!memoryDraftId) {
+      await lightMemoryStar();
+      return;
+    }
+
+    setMemoryFlowLoading(true);
+    setMemoryFlowError(null);
+    try {
+      await requestMemoryReview(memoryDraftId, memoryJob);
+    } catch (error) {
+      setMemoryFlowError(errorMessage(error));
+    } finally {
+      setMemoryFlowLoading(false);
+    }
+  }
+
+  async function confirmMemoryStar() {
+    if (!memoryReview) return;
+
+    setMemoryFlowLoading(true);
+    setMemoryFlowError(null);
+    try {
+      const confirmed = await confirmLegacyMemory({
+        memoryId: memoryReview.id,
+        version: memoryReview.version,
+        title: reviewTitle,
+        summary: reviewSummary,
+        tags: memoryReview.tags ?? [],
+        occurredAtLabel: memoryReview.occurredAtLabel,
+        locationLabel: memoryReview.locationLabel,
+        people: memoryReview.people ?? [],
+      });
+      const memory: MemoryStar = {
+        id: confirmed.id,
+        planetId: confirmed.planetId,
+        title: confirmed.title ?? reviewTitle,
+        occurredAt: confirmed.occurredAtLabel ?? "",
+        location: confirmed.locationLabel ?? "",
+        people: confirmed.people ?? [],
+        emotions: [],
+        visibility: confirmed.visibility,
+        summary: confirmed.summary ?? reviewSummary,
+      };
+      setExtractResult({
+        memory,
+        suggestion: {
+          title: memory.title,
+          occurredAt: memory.occurredAt,
+          location: memory.location,
+          people: memory.people,
+          emotions: [],
+          summary: memory.summary,
+          uncertainFields: [],
+        },
+        sourceText: confirmed.sourceText ?? quickRecordContent,
+        status: "confirmed",
+      });
+      setLitMemories((current) => [...current.filter((item) => item.id !== memory.id), memory]);
+      setGalaxyPlanets((current) => current.map((planet) => (
+        planet.id === memory.planetId
+          ? { ...planet, stats: { ...planet.stats, memoryStars: planet.stats.memoryStars + 1 } }
+          : planet
+      )));
+      setMemoryReview(null);
+      setActivePanel("memory1");
+      setActiveZone("memories");
+      setSelectedPlanetId(null);
+      setClosingPlanetId(null);
+      setToast("已确认点亮为记忆星，默认不公开");
+    } catch (error) {
+      setMemoryFlowError(errorMessage(error));
+    } finally {
+      setMemoryFlowLoading(false);
+    }
   }
 
   async function scanResonanceStar() {
@@ -1203,11 +1362,24 @@ export function GalaxyWorkspace({
           resonanceResult={resonanceResult}
           bookResult={bookResult}
           quickRecordContent={quickRecordContent}
-          loading={loopApi.loading}
+          loading={loopApi.loading || memoryFlowLoading}
+          memoryFlowError={memoryFlowError}
+          memoryReview={memoryReview}
+          quickRecordTarget={quickRecordTarget}
+          reviewSummary={reviewSummary}
+          reviewTitle={reviewTitle}
           onClose={() => setActivePanel(null)}
           onGo={goToZone}
           onLightMemory={lightMemoryStar}
+          onConfirmMemory={() => {
+            void confirmMemoryStar();
+          }}
           onQuickRecordChange={setQuickRecordContent}
+          onReviewSummaryChange={setReviewSummary}
+          onReviewTitleChange={setReviewTitle}
+          onRetryMemoryExtraction={() => {
+            void retryMemoryExtraction();
+          }}
           onScanResonance={scanResonanceStar}
           onPersistPlanetChange={persistPlanetChange}
           onConfirmShare={() => {
@@ -2282,11 +2454,20 @@ function SidePanel({
   bookResult,
   quickRecordContent,
   loading,
+  memoryFlowError,
+  memoryReview,
+  quickRecordTarget,
+  reviewSummary,
+  reviewTitle,
   shareUrl,
   onClose,
   onGo,
   onLightMemory,
+  onConfirmMemory,
   onQuickRecordChange,
+  onReviewSummaryChange,
+  onReviewTitleChange,
+  onRetryMemoryExtraction,
   onScanResonance,
   onPersistPlanetChange,
   onConfirmShare,
@@ -2301,11 +2482,20 @@ function SidePanel({
   bookResult: BookGenerateResponse | null;
   quickRecordContent: string;
   loading: boolean;
+  memoryFlowError: string | null;
+  memoryReview: LegacyMemoryResponse | null;
+  quickRecordTarget: Planet | null;
+  reviewSummary: string;
+  reviewTitle: string;
   shareUrl: string | null;
   onClose: () => void;
   onGo: (zone: GalaxyZoneKey) => void;
   onLightMemory: () => void;
+  onConfirmMemory: () => void;
   onQuickRecordChange: (value: string) => void;
+  onReviewSummaryChange: (value: string) => void;
+  onReviewTitleChange: (value: string) => void;
+  onRetryMemoryExtraction: () => void;
   onScanResonance: () => Promise<boolean>;
   onPersistPlanetChange: (planet: Planet, changes: LegacyPlanetChanges) => Promise<boolean>;
   onConfirmShare: () => void;
@@ -2563,26 +2753,73 @@ function SidePanel({
       {activePanel === "quickRecord" ? (
         <>
           <h2>点亮记忆星</h2>
-          <p>不用填完整表单。先留下一句话，AI 会把它整理成一颗可进入轨道的记忆星，你再决定是否补充细节。</p>
-          <input className="panel-input" defaultValue="妈妈的星球" aria-label="这段记忆靠近哪颗星球" />
-          <textarea
-            aria-label="记忆内容"
-            className="panel-textarea"
-            onChange={(event) => onQuickRecordChange(event.target.value)}
-            value={quickRecordContent}
-          />
-          <div className="ai-card">
-            <strong>整理预览</strong>
-            <p>AI 将尝试提取时间、地点、人物、事件和情绪；默认不公开，也不会自动分享。</p>
-          </div>
-          <div className="big-actions">
-            <button className="primary" disabled={loading} onClick={onLightMemory} type="button">
-              {loading ? "AI 整理中…" : "点亮为记忆星"}
-            </button>
-            <button className="secondary" onClick={() => onToast("语音入口已准备")} type="button">
-              改用语音
-            </button>
-          </div>
+          <p>不用填完整表单。先留下一句话，AI 会整理为待确认记忆；只有你确认后才会进入轨道。</p>
+          <p className="panel-readonly" aria-label="当前记忆目标">
+            目标星球：{quickRecordTarget?.name ?? "未选择"}
+          </p>
+          {memoryReview ? (
+            <>
+              <div className="ai-card">
+                <strong>AI 整理结果，等待你的确认</strong>
+                <p>状态：{memoryReview.status}</p>
+                {memoryReview.uncertainFields?.length ? (
+                  <p>待确认字段：{memoryReview.uncertainFields.join("、")}</p>
+                ) : null}
+              </div>
+              <label>
+                标题
+                <input
+                  aria-label="记忆标题"
+                  className="panel-input"
+                  onChange={(event) => onReviewTitleChange(event.target.value)}
+                  value={reviewTitle}
+                />
+              </label>
+              <label>
+                摘要
+                <textarea
+                  aria-label="记忆摘要"
+                  className="panel-textarea"
+                  onChange={(event) => onReviewSummaryChange(event.target.value)}
+                  value={reviewSummary}
+                />
+              </label>
+              <div className="big-actions">
+                <button className="primary" disabled={loading} onClick={onConfirmMemory} type="button">
+                  {loading ? "确认中…" : "确认点亮记忆星"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <textarea
+                aria-label="记忆内容"
+                className="panel-textarea"
+                onChange={(event) => onQuickRecordChange(event.target.value)}
+                value={quickRecordContent}
+              />
+              <div className="ai-card">
+                <strong>整理预览</strong>
+                <p>AI 将尝试提取时间、地点、人物和事件；默认不公开，也不会自动确认或分享。</p>
+              </div>
+              <div className="big-actions">
+                <button className="primary" disabled={loading} onClick={onLightMemory} type="button">
+                  {loading ? "AI 整理中…" : "点亮为记忆星"}
+                </button>
+                <button className="secondary" onClick={() => onToast("语音入口已准备")} type="button">
+                  改用语音
+                </button>
+              </div>
+            </>
+          )}
+          {memoryFlowError ? (
+            <div className="ai-card" role="alert">
+              <p>{memoryFlowError}</p>
+              <button className="secondary" disabled={loading} onClick={onRetryMemoryExtraction} type="button">
+                重试 AI 整理
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
 
