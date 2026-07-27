@@ -166,6 +166,21 @@ type MemoryFlowOperation = {
   controller: AbortController;
 };
 
+type MemoryDraftContext = {
+  draftId: string;
+  signature: string;
+};
+
+function buildMemoryDraftSignature(planetId: string, sourceText: string) {
+  return JSON.stringify({
+    planetId,
+    sourceText,
+    visibility: "family",
+    allowResonance: true,
+    allowBook: true,
+  });
+}
+
 async function waitForMemoryPollDelay(signal: AbortSignal) {
   return new Promise<boolean>((resolve) => {
     const timeout = window.setTimeout(() => {
@@ -424,6 +439,7 @@ export function GalaxyWorkspace({
   const dragStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const memoryFlowOperationRef = useRef<MemoryFlowOperation | null>(null);
   const memoryDraftRequestRef = useRef<{ key: string; signature: string } | null>(null);
+  const memoryDraftContextRef = useRef<MemoryDraftContext | null>(null);
   const memoryJobRequestRef = useRef<{ draftId: string; key: string } | null>(null);
 
   // 共鸣与家书仍保留旧演示状态；文字记忆改用草稿→AI 作业→人工确认的持久化流程。
@@ -486,17 +502,35 @@ export function GalaxyWorkspace({
   const selectedPlanet = galaxyPlanets.find((planet) => planet.id === selectedPlanetId) ?? null;
   const roamingPlanet = galaxyPlanets.find((planet) => planet.id === roamingPlanetId) ?? null;
   const quickRecordTarget = galaxyPlanets.find((planet) => planet.id === quickRecordTargetPlanetId) ?? null;
+  const quickRecordDraftSignature = quickRecordTarget
+    ? buildMemoryDraftSignature(quickRecordTarget.id, quickRecordContent.trim())
+    : null;
+  const hasMatchingMemoryDraft = Boolean(
+    memoryDraftId &&
+    quickRecordDraftSignature &&
+    memoryDraftContextRef.current?.draftId === memoryDraftId &&
+    memoryDraftContextRef.current.signature === quickRecordDraftSignature,
+  );
+  const memoryPrimaryActionLabel = hasMatchingMemoryDraft
+    ? memoryFlowError ? "重试整理" : "继续整理"
+    : "点亮为记忆星";
   const selectedMemory = selectedMemoryId
     ? litMemories.find((memory) => memory.id === selectedMemoryId) ?? null
     : null;
 
-  function cancelMemoryFlowOperation() {
+  function abortMemoryFlowOperation() {
     memoryFlowOperationRef.current?.controller.abort();
     memoryFlowOperationRef.current = null;
   }
 
+  function cancelMemoryFlowOperation() {
+    const hasActiveMemoryFlow = memoryFlowOperationRef.current !== null;
+    abortMemoryFlowOperation();
+    if (hasActiveMemoryFlow) setMemoryFlowLoading(false);
+  }
+
   function beginMemoryFlowOperation() {
-    cancelMemoryFlowOperation();
+    abortMemoryFlowOperation();
     const operation = {
       controller: new AbortController(),
     };
@@ -532,14 +566,12 @@ export function GalaxyWorkspace({
   }
 
   useEffect(() => () => {
-    memoryFlowOperationRef.current?.controller.abort();
-    memoryFlowOperationRef.current = null;
+    abortMemoryFlowOperation();
   }, []);
 
   useEffect(() => {
     if (activePanel === "quickRecord") return;
-    memoryFlowOperationRef.current?.controller.abort();
-    memoryFlowOperationRef.current = null;
+    abortMemoryFlowOperation();
   }, [activePanel]);
 
   const galaxyStyle = useMemo(
@@ -634,6 +666,7 @@ export function GalaxyWorkspace({
       setMemoryDraftId(null);
       setMemoryJob(null);
       setMemoryFlowError(null);
+      memoryDraftContextRef.current = null;
       resetMemoryRequestKeys();
     }
     setActivePanel(key);
@@ -695,14 +728,26 @@ export function GalaxyWorkspace({
       return;
     }
 
+    const draftSignature = buildMemoryDraftSignature(quickRecordTarget.id, content);
+    const existingDraft = memoryDraftContextRef.current;
+    if (
+      memoryDraftId &&
+      existingDraft?.draftId === memoryDraftId &&
+      existingDraft.signature === draftSignature
+    ) {
+      await retryMemoryExtraction();
+      return;
+    }
+
+    if (memoryDraftId || existingDraft) {
+      setMemoryDraftId(null);
+      setMemoryJob(null);
+      setMemoryReview(null);
+      memoryDraftContextRef.current = null;
+      resetMemoryRequestKeys();
+    }
+
     const operation = beginMemoryFlowOperation();
-    const draftSignature = JSON.stringify({
-      planetId: quickRecordTarget.id,
-      sourceText: content,
-      visibility: "family",
-      allowResonance: true,
-      allowBook: true,
-    });
     const idempotencyKey = memoryDraftRequestKey(draftSignature);
     setMemoryFlowLoading(true);
     setMemoryFlowError(null);
@@ -716,6 +761,8 @@ export function GalaxyWorkspace({
       }, idempotencyKey);
       if (!isCurrentMemoryFlowOperation(operation)) return;
       setMemoryDraftId(draft.id);
+      setMemoryJob(null);
+      memoryDraftContextRef.current = { draftId: draft.id, signature: draftSignature };
       memoryDraftRequestRef.current = null;
       await startMemoryExtraction(draft.id, operation);
     } catch (error) {
@@ -924,6 +971,7 @@ export function GalaxyWorkspace({
 
   function selectPlanet(planetId: string) {
     if (hiddenPlanetIds.includes(planetId)) return;
+    cancelMemoryFlowOperation();
 
     if (selectedPlanetId === planetId) {
       setClosingPlanetId(planetId);
@@ -947,6 +995,7 @@ export function GalaxyWorkspace({
 
   function openSelectedPlanet(planetId: string | null) {
     if (!planetId) return;
+    cancelMemoryFlowOperation();
 
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
@@ -993,6 +1042,7 @@ export function GalaxyWorkspace({
   }
 
   function openPlanetLifecycle(planetId: string) {
+    cancelMemoryFlowOperation();
     setSelectedPlanetId(planetId);
     setClosingPlanetId(null);
     setActivePanel("lifecycle");
@@ -1000,6 +1050,7 @@ export function GalaxyWorkspace({
   }
 
   function generateBookFromPlanet(planet: Planet) {
+    cancelMemoryFlowOperation();
     setSelectedPlanetId(planet.id);
     setClosingPlanetId(null);
     setActivePanel(null);
@@ -1251,6 +1302,7 @@ export function GalaxyWorkspace({
     setAutoCruise(true);
     setImmersiveMode(true);
     setRouteCollapsed(true);
+    cancelMemoryFlowOperation();
     setActivePanel(null);
     setRoamingPlanetId(null);
     setBookBeamPlanet(null);
@@ -1528,6 +1580,7 @@ export function GalaxyWorkspace({
           quickRecordContent={quickRecordContent}
           loading={loopApi.loading || memoryFlowLoading}
           memoryFlowError={memoryFlowError}
+          memoryPrimaryActionLabel={memoryPrimaryActionLabel}
           memoryReview={memoryReview}
           quickRecordTarget={quickRecordTarget}
           reviewSummary={reviewSummary}
@@ -2630,6 +2683,7 @@ function SidePanel({
   quickRecordContent,
   loading,
   memoryFlowError,
+  memoryPrimaryActionLabel,
   memoryReview,
   quickRecordTarget,
   reviewSummary,
@@ -2660,6 +2714,7 @@ function SidePanel({
   quickRecordContent: string;
   loading: boolean;
   memoryFlowError: string | null;
+  memoryPrimaryActionLabel: string;
   memoryReview: LegacyMemoryResponse | null;
   quickRecordTarget: Planet | null;
   reviewSummary: string;
@@ -3022,7 +3077,7 @@ function SidePanel({
               </div>
               <div className="big-actions">
                 <button className="primary" disabled={loading} onClick={onLightMemory} type="button">
-                  {loading ? "AI 整理中…" : "点亮为记忆星"}
+                  {loading ? "AI 整理中…" : memoryPrimaryActionLabel}
                 </button>
                 <button className="secondary" onClick={() => onToast("语音入口已准备")} type="button">
                   改用语音
