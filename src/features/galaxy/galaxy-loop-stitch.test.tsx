@@ -216,6 +216,33 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
     expect(screen.queryByRole("button", { name: /共鸣候选：/ })).not.toBeInTheDocument();
   });
 
+  it("ignores a stale resonance scan when another confirmed memory reopens the same panel", async () => {
+    const pendingResponse = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValue(pendingResponse.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    renderPersistedResonanceGalaxy({ pending: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
+    fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：妈妈的除夕" }));
+    expect(screen.getByRole("heading", { name: "妈妈的除夕" })).toBeInTheDocument();
+
+    await act(async () => {
+      pendingResponse.resolve(new Response(JSON.stringify({ candidates: [pendingResonance] }), { status: 200 }));
+      await pendingResponse.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("heading", { name: "妈妈的除夕" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "星图详情" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
+    expect(screen.queryByRole("button", { name: /共鸣候选：/ })).not.toBeInTheDocument();
+  });
+
   it("aborts the current resonance scan when its confirmed-memory panel closes without showing an abort error", async () => {
     let scanSignal: AbortSignal | undefined;
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {

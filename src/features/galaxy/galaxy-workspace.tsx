@@ -672,6 +672,7 @@ export function GalaxyWorkspace({
 
   function openAnchorPlanet(planetId: string | null) {
     if (!planetId) return;
+    cancelResonanceScanOperation();
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
     setRoamingPlanetId(planetId);
@@ -680,6 +681,7 @@ export function GalaxyWorkspace({
 
   function runRouteStep(index: number) {
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
     const step = routeSteps[index];
     setActiveRouteStep(index);
     setSelectedPlanetId(null);
@@ -703,6 +705,7 @@ export function GalaxyWorkspace({
 
   function openPanel(key: PanelKey) {
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
     if (["memory1", "memory2", "memory3", "memory4"].includes(key)) {
       setSelectedMemoryId(null);
     }
@@ -743,6 +746,7 @@ export function GalaxyWorkspace({
 
   function openConfirmedMemory(memoryId: string) {
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
     setSelectedMemoryId(memoryId);
     setActivePanel("memory1");
     setRoamingPlanetId(null);
@@ -1102,6 +1106,7 @@ export function GalaxyWorkspace({
   function selectPlanet(planetId: string) {
     if (hiddenPlanetIds.includes(planetId)) return;
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
 
     if (selectedPlanetId === planetId) {
       setClosingPlanetId(planetId);
@@ -1124,6 +1129,7 @@ export function GalaxyWorkspace({
   function openSelectedPlanet(planetId: string | null) {
     if (!planetId) return;
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
 
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
@@ -1171,6 +1177,7 @@ export function GalaxyWorkspace({
 
   function openPlanetLifecycle(planetId: string) {
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
     setSelectedPlanetId(planetId);
     setClosingPlanetId(null);
     setActivePanel("lifecycle");
@@ -1425,6 +1432,7 @@ export function GalaxyWorkspace({
     setImmersiveMode(true);
     setRouteCollapsed(true);
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
     setActivePanel(null);
     setRoamingPlanetId(null);
     setToast("自动巡航已启动，星球开始沿轨道漫游");
