@@ -571,7 +571,7 @@ export function GalaxyWorkspace({
     const planet = galaxyPlanets.find((item) => item.id === planetId);
     if (!planet) return;
 
-    setActiveZone("galaxy");
+    switchGalaxyZone("galaxy");
     setView({
       panX: (50 - planet.position.x) * 8,
       panY: (50 - planet.position.y) * 6,
@@ -609,8 +609,8 @@ export function GalaxyWorkspace({
 
     setRoamingPlanetId(null);
     setActivePanel(step.action);
-    if (step.action === "resonance") setActiveZone("resonance");
-    if (step.action === "book") setActiveZone("books");
+    if (step.action === "resonance") switchGalaxyZone("resonance", { panel: "resonance" });
+    if (step.action === "book") switchGalaxyZone("books", { panel: "book" });
   }
 
   function openPanel(key: PanelKey) {
@@ -658,20 +658,28 @@ export function GalaxyWorkspace({
     setActivePanel(null);
   }
 
-  function goToZone(zone: GalaxyZoneKey) {
+  function switchGalaxyZone(
+    zone: GalaxyZoneKey,
+    options: { panel?: PanelKey | null; preserveSelectedPlanet?: boolean } = {},
+  ) {
     cancelMemoryFlowOperation();
     setActiveZone(zone);
-    setActivePanel(null);
+    setActivePanel(options.panel ?? null);
     setRoamingPlanetId(null);
-    setSelectedPlanetId(null);
-    setClosingPlanetId(null);
+    if (!options.preserveSelectedPlanet) {
+      setSelectedPlanetId(null);
+      setClosingPlanetId(null);
+    }
     setBookBeamPlanet(null);
+  }
+
+  function goToZone(zone: GalaxyZoneKey) {
+    switchGalaxyZone(zone);
   }
 
   function selectThemeFromNebula(theme: string) {
     setSelectedTheme(theme);
-    setActiveZone("books");
-    setActivePanel(null);
+    switchGalaxyZone("books");
     setToast(`已带入「${theme}」`);
   }
 
@@ -837,10 +845,7 @@ export function GalaxyWorkspace({
       )));
       setMemoryReview(null);
       setSelectedMemoryId(memory.id);
-      setActivePanel("memory1");
-      setActiveZone("memories");
-      setSelectedPlanetId(null);
-      setClosingPlanetId(null);
+      switchGalaxyZone("memories", { panel: "memory1" });
       setToast("已确认点亮为记忆星，默认不公开");
     } catch (error) {
       setMemoryFlowError(errorMessage(error));
@@ -974,21 +979,17 @@ export function GalaxyWorkspace({
 
     setSelectedPlanetId(planetId);
     setClosingPlanetId(null);
-    setActiveZone("workshop");
-    setActivePanel(null);
-    setRoamingPlanetId(null);
+    switchGalaxyZone("workshop", { preserveSelectedPlanet: true });
     setSelectedWorkshopBg(planet.theme);
     setToast("星球主题实验室已就近展开");
   }
 
   function configurePlanetPrivacy(planet: Planet) {
-    setActiveZone("privacy");
     setSelectedPlanetId(planet.id);
-    setClosingPlanetId(null);
-    setRoamingPlanetId(null);
-    if (planet.type === "self") setActivePanel("scopePrivate");
-    else if (planet.type === "public") setActivePanel("scopePublic");
-    else setActivePanel("scopeFamily");
+    switchGalaxyZone("privacy", {
+      panel: planet.type === "self" ? "scopePrivate" : planet.type === "public" ? "scopePublic" : "scopeFamily",
+      preserveSelectedPlanet: true,
+    });
   }
 
   function openPlanetLifecycle(planetId: string) {
@@ -1283,7 +1284,7 @@ export function GalaxyWorkspace({
           className="mobile-nav"
           id="mobile-zone"
           value={activeZone}
-          onChange={(event) => setActiveZone(event.target.value as GalaxyZoneKey)}
+          onChange={(event) => switchGalaxyZone(event.target.value as GalaxyZoneKey)}
         >
           {galaxyZones.map((zone) => (
             <option key={zone.key} value={zone.key}>
@@ -1300,10 +1301,7 @@ export function GalaxyWorkspace({
               className={`nav-btn ${activeZone === zone.key ? "active" : ""}`}
               key={zone.key}
               onClick={() => {
-                setActiveZone(zone.key);
-                setActivePanel(zone.key === "privacy" ? "privacy" : null);
-                setRoamingPlanetId(null);
-                setSelectedPlanetId(null);
+                switchGalaxyZone(zone.key, { panel: zone.key === "privacy" ? "privacy" : null });
               }}
               type="button"
             >

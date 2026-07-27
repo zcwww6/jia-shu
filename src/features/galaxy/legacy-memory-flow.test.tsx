@@ -34,6 +34,24 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     vi.useRealTimers();
   });
 
+  async function startQueuedMemoryPolling() {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const rendered = render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    return { fetchMock, ...rendered };
+  }
+
   it("binds the selected persisted planet, waits for review, and lights a star only after confirmation", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
@@ -248,6 +266,34 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
 
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(0);
+  });
+
+  it("cancels queued polling and closes quick record when mobile star-zone selection changes", async () => {
+    const { fetchMock } = await startQueuedMemoryPolling();
+
+    fireEvent.change(screen.getByLabelText("星域"), { target: { value: "memories" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-roam");
+    expect(screen.queryByRole("heading", { name: "点亮记忆星" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(0);
+  });
+
+  it("cancels queued polling and closes quick record when focusPlanet changes the active zone", async () => {
+    const { container, fetchMock } = await startQueuedMemoryPolling();
+    const interactiveSpace = container.querySelector(".interactive-space");
+    if (!interactiveSpace) throw new Error("interactive galaxy space is missing");
+
+    fireEvent.doubleClick(interactiveSpace);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-galaxy");
+    expect(screen.queryByRole("heading", { name: "点亮记忆星" })).not.toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(0);
   });
 
