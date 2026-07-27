@@ -156,6 +156,25 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
     expect(screen.queryByRole("button", { name: "旧本地星" })).not.toBeInTheDocument();
   });
 
+  it("shows the clicked confirmed server memory's own safe details without falling back to a mock memory", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={[]}
+        initialConfirmedMemories={[{
+          id: "memory-server-eve", planetId: "planet-self", title: "服务端确认的除夕", occurredAt: "2024 年除夕", location: "新家", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "一家人在新家吃年夜饭。",
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：服务端确认的除夕" }));
+
+    expect(screen.getByRole("heading", { name: "服务端确认的除夕" })).toBeInTheDocument();
+    expect(screen.getByText("一家人在新家吃年夜饭。")).toBeInTheDocument();
+    expect(screen.getByText("时间：2024 年除夕。地点：新家。人物：妈妈、我。情绪：暂无。")).toBeInTheDocument();
+    expect(screen.queryByText("那年第一次在新房里过年。妈妈忙了一整天，最后在客厅拍了一张合照。")).not.toBeInTheDocument();
+  });
+
   it("不会用旧的抽取缓存显示或扫描共鸣", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

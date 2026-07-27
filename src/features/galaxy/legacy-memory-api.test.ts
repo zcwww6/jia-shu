@@ -92,4 +92,31 @@ describe("legacy memory API bridge", () => {
 
     await expect(getLegacyMemoryAiJob("job-1")).rejects.toThrow("AI 服务暂不可用，请稍后再试。");
   });
+
+  it("uses caller-owned idempotency keys when replaying a draft or extraction request", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const input = {
+      planetId: "planet-persisted-mom",
+      sourceText: "除夕夜全家在新房拍了合照。",
+      visibility: "family" as const,
+    };
+
+    await createLegacyMemoryDraft(input, "memory-replay-key-0001");
+    await createLegacyMemoryDraft(input, "memory-replay-key-0001");
+    await startLegacyMemoryExtraction("memory-1", "job-replay-key-0001");
+    await startLegacyMemoryExtraction("memory-1", "job-replay-key-0001");
+
+    expect(fetchMock.mock.calls.map(([, init]) => (init as RequestInit).headers)).toEqual([
+      expect.objectContaining({ "Idempotency-Key": "memory-replay-key-0001" }),
+      expect.objectContaining({ "Idempotency-Key": "memory-replay-key-0001" }),
+      expect.objectContaining({ "Idempotency-Key": "job-replay-key-0001" }),
+      expect.objectContaining({ "Idempotency-Key": "job-replay-key-0001" }),
+    ]);
+  });
 });

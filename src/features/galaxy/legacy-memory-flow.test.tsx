@@ -68,6 +68,53 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       "/api/memories/memory-1/confirm",
       expect.objectContaining({ headers: expect.objectContaining({ "If-Match-Version": "3" }) }),
     );
+
+    fireEvent.click(screen.getByRole("button", { name: "除夕合照" }));
+    expect(screen.getByRole("heading", { name: "除夕合照" })).toBeInTheDocument();
+    expect(screen.getByText("全家团圆")).toBeInTheDocument();
+    expect(screen.queryByText("那年第一次在新房里过年。妈妈忙了一整天，最后在客厅拍了一张合照。")).not.toBeInTheDocument();
+  });
+
+  it("replays a transport-lost draft POST with the same idempotency key instead of creating a new logical draft", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("响应在提交后丢失"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "failed", error: "模型不可用" }), { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await waitFor(() => expect(screen.getByText("响应在提交后丢失")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories")).toHaveLength(2));
+
+    const draftRequests = fetchMock.mock.calls.filter(([url]) => url === "/api/memories");
+    const firstDraftKey = ((draftRequests[0][1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"];
+    const replayDraftKey = ((draftRequests[1][1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"];
+    expect(replayDraftKey).toBe(firstDraftKey);
+  });
+
+  it("replays a transport-lost AI job POST with the same idempotency key", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockRejectedValueOnce(new TypeError("AI 作业响应在提交后丢失"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "failed", error: "模型不可用" }), { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await waitFor(() => expect(screen.getByText("AI 作业响应在提交后丢失")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(2));
+
+    const jobRequests = fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs");
+    const firstJobKey = ((jobRequests[0][1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"];
+    const replayJobKey = ((jobRequests[1][1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"];
+    expect(replayJobKey).toBe(firstJobKey);
   });
 
   it("continues polling the same queued job on retry without another job POST", async () => {
@@ -97,8 +144,8 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toEqual([
-      ["/api/ai-jobs/job-1", { method: "GET" }],
-      ["/api/ai-jobs/job-1", { method: "GET" }],
+      ["/api/ai-jobs/job-1", expect.objectContaining({ method: "GET", signal: expect.any(AbortSignal) })],
+      ["/api/ai-jobs/job-1", expect.objectContaining({ method: "GET", signal: expect.any(AbortSignal) })],
     ]);
   });
 
@@ -129,8 +176,8 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toEqual([
-      ["/api/ai-jobs/job-1", { method: "GET" }],
-      ["/api/ai-jobs/job-1", { method: "GET" }],
+      ["/api/ai-jobs/job-1", expect.objectContaining({ method: "GET", signal: expect.any(AbortSignal) })],
+      ["/api/ai-jobs/job-1", expect.objectContaining({ method: "GET", signal: expect.any(AbortSignal) })],
     ]);
   });
 
@@ -165,10 +212,11 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     expect(fetchMock).toHaveBeenLastCalledWith("/api/memories/memory-1", { method: "GET" });
   });
 
-  it("does not create a new job when a draft has an unknown job state", async () => {
+  it("replays the same job request when the job POST response is transport-unknown", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "作业请求超时" }), { status: 503 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "作业请求超时" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "failed", error: "模型不可用" }), { status: 202 }));
     vi.stubGlobal("fetch", fetchMock);
 
     render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
@@ -178,8 +226,29 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
 
-    expect(screen.getByText("AI 作业状态未知，请刷新或重新打开这条草稿后再试")).toBeInTheDocument();
-    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(2));
+  });
+
+  it("cancels queued polling when the memory panel closes before the next polling interval", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(0);
   });
 
   it("starts a replacement job only after the recorded job has failed", async () => {

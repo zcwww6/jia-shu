@@ -57,30 +57,30 @@ async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
   return body as T;
 }
 
-function idempotentJson(body: unknown): RequestInit {
+function idempotentJson(body: unknown, idempotencyKey?: string): RequestInit {
   return {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Idempotency-Key": crypto.randomUUID(),
+      "Idempotency-Key": idempotencyKey ?? crypto.randomUUID(),
     },
     body: JSON.stringify(body),
   };
 }
 
-export function createLegacyMemoryDraft(input: CreateLegacyMemoryDraftInput) {
-  return requestJson<LegacyMemoryResponse>("/api/memories", idempotentJson(input));
+export function createLegacyMemoryDraft(input: CreateLegacyMemoryDraftInput, idempotencyKey?: string) {
+  return requestJson<LegacyMemoryResponse>("/api/memories", idempotentJson(input, idempotencyKey));
 }
 
-export function startLegacyMemoryExtraction(memoryId: string) {
+export function startLegacyMemoryExtraction(memoryId: string, idempotencyKey?: string) {
   return requestJson<LegacyMemoryAiJob>(
     `/api/memories/${memoryId}/ai-jobs`,
-    idempotentJson({ consent: true, purpose: "memory_extraction" }),
+    idempotentJson({ consent: true, purpose: "memory_extraction" }, idempotencyKey),
   );
 }
 
-export function getLegacyMemoryAiJob(jobId: string) {
-  return requestJson<LegacyMemoryAiJob>(`/api/ai-jobs/${jobId}`, { method: "GET" });
+export function getLegacyMemoryAiJob(jobId: string, init: Pick<RequestInit, "signal"> = {}) {
+  return requestJson<LegacyMemoryAiJob>(`/api/ai-jobs/${jobId}`, { method: "GET", ...init });
 }
 
 export function getLegacyMemoryReview(memoryId: string) {
