@@ -137,6 +137,25 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
     expect(screen.queryByRole("button", { name: "旧本地星" })).not.toBeInTheDocument();
   });
 
+  it("mounts confirmed server memories immediately without reading localStorage business content", () => {
+    window.localStorage.setItem("jiashu-galaxy-lit-memories", JSON.stringify([{
+      id: "memory-old", planetId: "planet-self", title: "旧本地星", occurredAt: "", location: "", people: [], emotions: [], visibility: "family", summary: "",
+    }]));
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={[]}
+        initialConfirmedMemories={[{
+          id: "memory-confirmed", planetId: "planet-self", title: "服务端确认记忆", occurredAt: "2018", location: "家", people: ["我"], emotions: [], visibility: "private", summary: "已确认",
+        }]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "新点亮：服务端确认记忆" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "旧本地星" })).not.toBeInTheDocument();
+  });
+
   it("不会用旧的抽取缓存显示或扫描共鸣", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

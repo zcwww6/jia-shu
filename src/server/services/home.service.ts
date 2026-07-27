@@ -4,6 +4,7 @@ import {
   type Planet,
   type PlanetLink,
   type PlanetType,
+  type MemoryStar,
   type Visibility,
 } from "@/shared/types/galaxy";
 import { findArchivedHomePlanets, findHomePlanets } from "@/server/db/galaxy-repo";
@@ -23,6 +24,13 @@ type HomeResonanceRecord = {
 type HomeMemoryRecord = {
   id: string;
   title?: string | null;
+  summary?: string | null;
+  occurredAtLabel?: string | null;
+  locationLabel?: string | null;
+  people?: unknown;
+  visibility: Visibility;
+  status: "draft" | "processing" | "needs_confirmation" | "confirmed" | "archived";
+  deletedAt: Date | null;
   allowBook?: boolean;
   resonanceSources: HomeResonanceRecord[];
   resonanceTargets: HomeResonanceRecord[];
@@ -86,6 +94,7 @@ export type EligibleBookSource = { id: string; title: string | null };
 export type GalaxyReadModel = {
   planets: Planet[];
   archivedPlanets: Planet[];
+  confirmedMemories: MemoryStar[];
   relationships: PlanetLink[];
   pendingResonances: PendingResonanceReadModel[];
   growingBooks: GrowingBookSummary[];
@@ -135,11 +144,32 @@ export async function getHomeData(
   return {
     planets: homePlanets.map((planet) => mapHomePlanet(planet, activePlanetIds, resolvedPositions.get(planet.id)!)),
     archivedPlanets: archivedHomePlanets.map((planet) => mapArchivedPlanet(planet)),
+    confirmedMemories: mapConfirmedMemories(homePlanets),
     relationships: mapRelationships(homePlanets, activePlanetIds),
     pendingResonances: mapPendingResonances(homePlanets),
     growingBooks: mapGrowingBooks(homePlanets),
     eligibleBookSources: mapEligibleBookSources(homePlanets),
   };
+}
+
+function mapConfirmedMemories(planets: HomePlanetRecord[]): MemoryStar[] {
+  return planets.flatMap((planet) => planet.memories
+    .filter((memory) => memory.status === "confirmed" && memory.deletedAt === null)
+    .map((memory) => ({
+      id: memory.id,
+      planetId: planet.id,
+      title: memory.title?.trim() || "未命名记忆",
+      occurredAt: memory.occurredAtLabel ?? "",
+      location: memory.locationLabel ?? "",
+      people: displayPeople(memory.people),
+      emotions: [],
+      visibility: memory.visibility,
+      summary: memory.summary ?? "",
+    })));
+}
+
+function displayPeople(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((person): person is string => typeof person === "string") : [];
 }
 
 function mapArchivedPlanet(planet: ArchivedHomePlanetRecord): Planet {

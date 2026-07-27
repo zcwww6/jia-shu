@@ -53,7 +53,56 @@ describe("getHomeData", () => {
       pendingResonances: [],
       growingBooks: [],
       eligibleBookSources: [],
+      confirmedMemories: [],
     });
+  });
+
+  it("projects only confirmed active home memories as display-safe memory stars", async () => {
+    const result = await getHomeData("user_1", {
+      findHomePlanets: vi.fn().mockResolvedValue([
+        homePlanet({
+          id: "planet-mom",
+          memories: [
+            {
+              id: "memory-mom", status: "confirmed", deletedAt: null, title: "除夕合照", summary: "全家团圆", occurredAtLabel: "2018 年除夕", locationLabel: "新房", people: ["妈妈", "我"], visibility: "family",
+              sourceText: "不得泄露的原文", assets: [{ storageKey: "private-photo" }], aiJobs: [{ requestHash: "private-job" }],
+              allowBook: false, resonanceSources: [], resonanceTargets: [], bookMemories: [],
+            },
+            {
+              id: "memory-draft", status: "draft", deletedAt: null, title: "草稿", summary: "", occurredAtLabel: null, locationLabel: null, people: [], visibility: "private",
+              sourceText: "草稿原文", allowBook: false, resonanceSources: [], resonanceTargets: [], bookMemories: [],
+            },
+            {
+              id: "memory-review", status: "needs_confirmation", deletedAt: null, title: "待确认", summary: "", occurredAtLabel: null, locationLabel: null, people: [], visibility: "private",
+              sourceText: "待确认原文", allowBook: false, resonanceSources: [], resonanceTargets: [], bookMemories: [],
+            },
+            {
+              id: "memory-deleted", status: "confirmed", deletedAt: new Date(), title: "已删除", summary: "", occurredAtLabel: null, locationLabel: null, people: [], visibility: "private",
+              sourceText: "删除原文", allowBook: false, resonanceSources: [], resonanceTargets: [], bookMemories: [],
+            },
+          ],
+        }),
+        homePlanet({
+          id: "planet-dad",
+          memories: [{
+            id: "memory-dad", status: "confirmed", deletedAt: null, title: null, summary: null, occurredAtLabel: null, locationLabel: null, people: null, visibility: "private",
+            sourceText: "不得泄露的爸爸原文", allowBook: false, resonanceSources: [], resonanceTargets: [], bookMemories: [],
+          }],
+        }),
+      ]),
+    });
+
+    expect(result.confirmedMemories).toEqual([
+      {
+        id: "memory-mom", planetId: "planet-mom", title: "除夕合照", occurredAt: "2018 年除夕", location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "全家团圆",
+      },
+      {
+        id: "memory-dad", planetId: "planet-dad", title: "未命名记忆", occurredAt: "", location: "", people: [], emotions: [], visibility: "private", summary: "",
+      },
+    ]);
+    expect(JSON.stringify(result.confirmedMemories)).not.toContain("不得泄露");
+    expect(JSON.stringify(result.confirmedMemories)).not.toContain("private-photo");
+    expect(JSON.stringify(result.confirmedMemories)).not.toContain("private-job");
   });
 
   it("returns archived family planets separately so the editor can restore them after a refresh", async () => {

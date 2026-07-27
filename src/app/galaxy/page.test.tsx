@@ -80,6 +80,19 @@ describe("GalaxyPage", () => {
           rule: "manual",
         },
       ],
+      confirmedMemories: [
+        {
+          id: "server-memory-1",
+          planetId: "server-mom",
+          title: "服务端确认的除夕",
+          occurredAt: "2018 年除夕",
+          location: "新房",
+          people: ["妈妈", "我"],
+          emotions: [],
+          visibility: "family",
+          summary: "只包含安全展示字段。",
+        },
+      ],
     });
 
     render(await GalaxyPage());
@@ -87,5 +100,6 @@ describe("GalaxyPage", () => {
     expect(getHomeData).toHaveBeenCalledWith("user-1");
     expect(screen.getByRole("button", { name: "进入服务器星球漫游" })).toBeInTheDocument();
     expect(screen.getByTestId("planet-link-server-link")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新点亮：服务端确认的除夕" })).toBeInTheDocument();
   });
 });

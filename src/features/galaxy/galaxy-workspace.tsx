@@ -344,10 +344,12 @@ export function GalaxyWorkspace({
   initialPlanets,
   initialLinks = planetLinks,
   initialArchivedPlanets = [],
+  initialConfirmedMemories = [],
 }: {
   initialPlanets?: Planet[];
   initialLinks?: PlanetLink[];
   initialArchivedPlanets?: Planet[];
+  initialConfirmedMemories?: MemoryStar[];
 }) {
   const startingPlanets = initialPlanets ?? [];
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
@@ -398,7 +400,7 @@ export function GalaxyWorkspace({
   const [bookResult, setBookResult] = useState<BookGenerateResponse | null>(
     () => readGalaxyBookResult(),
   );
-  const [litMemories, setLitMemories] = useState<MemoryStar[]>([]);
+  const [litMemories, setLitMemories] = useState<MemoryStar[]>(initialConfirmedMemories);
   const [quickRecordTargetPlanetId, setQuickRecordTargetPlanetId] = useState<string | null>(null);
   const [memoryReview, setMemoryReview] = useState<LegacyMemoryResponse | null>(null);
   const [reviewTitle, setReviewTitle] = useState("");

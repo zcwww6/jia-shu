@@ -194,6 +194,13 @@ describe("galaxy repo", () => {
           select: {
             id: true,
             title: true,
+            summary: true,
+            occurredAtLabel: true,
+            locationLabel: true,
+            people: true,
+            visibility: true,
+            status: true,
+            deletedAt: true,
             allowBook: true,
             resonanceSources: {
               where: {
