@@ -32,11 +32,12 @@ async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function scanLegacyResonances(memoryId: string) {
+export function scanLegacyResonances(memoryId: string, signal?: AbortSignal) {
   return requestJson<LegacyResonanceScanResponse>("/api/resonances/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ memoryId }),
+    signal,
   });
 }
 

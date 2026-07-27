@@ -65,6 +65,7 @@ describe("GalaxyWorkspace book entry guard", () => {
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
 
     expectLockedWithoutBookContent(fetchMock);
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 
   it("locks the recommended route book entry before confirmation", () => {

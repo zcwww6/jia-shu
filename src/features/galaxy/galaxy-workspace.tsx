@@ -165,6 +165,10 @@ type MemoryFlowOperation = {
   controller: AbortController;
 };
 
+type ResonanceScanOperation = {
+  controller: AbortController;
+};
+
 type MemoryDraftContext = {
   draftId: string;
   signature: string;
@@ -437,6 +441,7 @@ export function GalaxyWorkspace({
   const [starMapEditorOpen, setStarMapEditorOpen] = useState(false);
   const dragStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const memoryFlowOperationRef = useRef<MemoryFlowOperation | null>(null);
+  const resonanceScanOperationRef = useRef<ResonanceScanOperation | null>(null);
   const memoryDraftRequestRef = useRef<{ key: string; signature: string } | null>(null);
   const memoryDraftContextRef = useRef<MemoryDraftContext | null>(null);
   const memoryJobRequestRef = useRef<{ draftId: string; key: string } | null>(null);
@@ -556,6 +561,30 @@ export function GalaxyWorkspace({
     return memoryFlowOperationRef.current === operation && !operation.controller.signal.aborted;
   }
 
+  function abortResonanceScanOperation() {
+    resonanceScanOperationRef.current?.controller.abort();
+    resonanceScanOperationRef.current = null;
+  }
+
+  function cancelResonanceScanOperation() {
+    const hasActiveResonanceScan = resonanceScanOperationRef.current !== null;
+    abortResonanceScanOperation();
+    if (hasActiveResonanceScan) setResonanceLoading(false);
+  }
+
+  function beginResonanceScanOperation() {
+    abortResonanceScanOperation();
+    const operation = {
+      controller: new AbortController(),
+    };
+    resonanceScanOperationRef.current = operation;
+    return operation;
+  }
+
+  function isCurrentResonanceScanOperation(operation: ResonanceScanOperation) {
+    return resonanceScanOperationRef.current === operation && !operation.controller.signal.aborted;
+  }
+
   function resetMemoryRequestKeys() {
     memoryDraftRequestRef.current = null;
     memoryJobRequestRef.current = null;
@@ -581,12 +610,22 @@ export function GalaxyWorkspace({
 
   useEffect(() => () => {
     abortMemoryFlowOperation();
+    abortResonanceScanOperation();
   }, []);
 
   useEffect(() => {
     if (activePanel === "quickRecord") return;
     abortMemoryFlowOperation();
   }, [activePanel]);
+
+  useEffect(() => {
+    const operation = resonanceScanOperationRef.current;
+    if (!operation) return;
+
+    operation.controller.abort();
+    resonanceScanOperationRef.current = null;
+    setResonanceLoading(false);
+  }, [activePanel, activeZone]);
 
   const galaxyStyle = useMemo(
     () =>
@@ -713,6 +752,7 @@ export function GalaxyWorkspace({
 
   function closeActivePanel() {
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
     setActivePanel(null);
   }
 
@@ -726,6 +766,7 @@ export function GalaxyWorkspace({
     }
 
     cancelMemoryFlowOperation();
+    cancelResonanceScanOperation();
     setActiveZone(zone);
     setActivePanel(options.panel ?? null);
     setRoamingPlanetId(null);
@@ -938,11 +979,13 @@ export function GalaxyWorkspace({
       return false;
     }
 
+    const operation = beginResonanceScanOperation();
     setResonanceLoading(true);
     setResonanceError(null);
     setResonanceDecisionMessage(null);
     try {
-      const result = await scanLegacyResonances(sourceMemory.id);
+      const result = await scanLegacyResonances(sourceMemory.id, operation.controller.signal);
+      if (!isCurrentResonanceScanOperation(operation)) return false;
       const candidates = result.candidates.filter((candidate) => candidate.status === "candidate");
       if (candidates.length === 0) {
         setResonanceError("暂未找到可确认的共鸣星轨。");
@@ -964,10 +1007,16 @@ export function GalaxyWorkspace({
       setSelectedResonanceId(candidates[0].id);
       return true;
     } catch (error) {
+      if (!isCurrentResonanceScanOperation(operation) || error instanceof Error && error.name === "AbortError") {
+        return false;
+      }
       setResonanceError(errorMessage(error));
       return false;
     } finally {
-      setResonanceLoading(false);
+      if (isCurrentResonanceScanOperation(operation)) {
+        resonanceScanOperationRef.current = null;
+        setResonanceLoading(false);
+      }
     }
   }
 
@@ -1711,10 +1760,12 @@ export function GalaxyWorkspace({
         {toast ? (
           <motion.div
             animate={{ opacity: 1, y: 0 }}
+            aria-live="polite"
             className="toast show"
             exit={{ opacity: 0, y: -8 }}
             initial={{ opacity: 0, y: -8 }}
             onAnimationComplete={() => window.setTimeout(() => setToast(null), 1400)}
+            role="status"
           >
             {toast}
           </motion.div>

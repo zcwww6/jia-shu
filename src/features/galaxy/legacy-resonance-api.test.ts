@@ -24,6 +24,21 @@ describe("legacy resonance API bridge", () => {
     );
   });
 
+  it("forwards scan cancellation to the persisted resonance endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ candidates: [] }), { status: 200 }),
+    );
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await scanLegacyResonances("memory-confirmed-1", controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/resonances/scan",
+      expect.objectContaining({ signal: controller.signal }),
+    );
+  });
+
   it("confirms a candidate with its current optimistic version", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({

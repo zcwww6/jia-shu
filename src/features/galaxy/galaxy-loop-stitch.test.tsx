@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { planets } from "@/shared/mock/galaxy-data";
@@ -37,6 +37,17 @@ const pendingResonance = {
   status: "candidate" as const,
   version: 3,
 };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
+}
 
 function renderPersistedResonanceGalaxy(options: { pending?: boolean } = {}) {
   return render(
@@ -173,6 +184,78 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
       .resolves.toBeInTheDocument();
     expect(screen.getByRole("complementary", { name: "星图详情" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /共鸣候选：/ })).not.toBeInTheDocument();
+  });
+
+  it("ignores a stale resonance scan after the user changes zones", async () => {
+    const pendingResponse = deferred<Response>();
+    const fetchMock = vi.fn().mockReturnValue(pendingResponse.promise);
+    vi.stubGlobal("fetch", fetchMock);
+    renderPersistedResonanceGalaxy({ pending: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
+    fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "隐私星域" }));
+    const privacyPanel = screen.getByRole("complementary", { name: "星图详情" });
+    expect(within(privacyPanel).getByRole("heading", { name: "隐私星域" })).toBeInTheDocument();
+
+    await act(async () => {
+      pendingResponse.resolve(new Response(JSON.stringify({ candidates: [pendingResonance] }), { status: 200 }));
+      await pendingResponse.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: "隐私星域" })).toHaveClass("active");
+    expect(within(screen.getByRole("complementary", { name: "星图详情" }))
+      .getByRole("heading", { name: "隐私星域" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /共鸣候选：/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
+    expect(screen.queryByRole("button", { name: /共鸣候选：/ })).not.toBeInTheDocument();
+  });
+
+  it("aborts the current resonance scan when its confirmed-memory panel closes without showing an abort error", async () => {
+    let scanSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      scanSignal = init?.signal ?? undefined;
+      scanSignal?.addEventListener("abort", () => {
+        reject(new DOMException("共鸣扫描已取消", "AbortError"));
+      });
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderPersistedResonanceGalaxy({ pending: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
+    fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
+    expect(scanSignal?.aborted).toBe(true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
+    expect(screen.queryByText("共鸣扫描已取消")).not.toBeInTheDocument();
+  });
+
+  it("aborts the current resonance scan when the workspace unmounts", async () => {
+    let scanSignal: AbortSignal | undefined;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>(() => {
+      scanSignal = init?.signal ?? undefined;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { unmount } = renderPersistedResonanceGalaxy({ pending: false });
+
+    fireEvent.click(screen.getByRole("button", { name: "新点亮：我的除夕" }));
+    fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    unmount();
+
+    expect(scanSignal?.aborted).toBe(true);
   });
 
   it("rehydrates a persisted pending candidate after refresh using only safe memory projections", () => {
