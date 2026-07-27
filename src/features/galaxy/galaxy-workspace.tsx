@@ -1292,6 +1292,7 @@ export function GalaxyWorkspace({
               activeZone={activeZone}
               bookGenerated={bookGenerated}
               bookResult={bookResult}
+              resonanceResult={resonanceResult}
               litMemories={litMemories}
               anchorPlanetIds={anchorPlanetIds}
               onGenerateBook={() => {
@@ -1478,6 +1479,7 @@ function ZoneScene({
   anchorPlanetIds,
   bookGenerated,
   bookResult,
+  resonanceResult,
   litMemories,
   closingPlanetId,
   onGenerateBook,
@@ -1516,6 +1518,7 @@ function ZoneScene({
   };
   bookGenerated: boolean;
   bookResult: BookGenerateResponse | null;
+  resonanceResult: ResonanceScanResponse | null;
   litMemories: MemoryStar[];
   closingPlanetId: string | null;
   onGenerateBook: () => void;
@@ -1754,7 +1757,12 @@ function ZoneScene({
           onClick={() => onOpenPlanet(anchorPlanetIds.self)}
           top="50%"
         />
-        <SparkButton label="2018 除夕共鸣星轨" left="50%" onClick={() => onOpenPanel("resonance")} top="45%" />
+        <SparkButton
+          label={resonanceResult?.candidate.title ?? "2018 除夕共鸣星轨"}
+          left="50%"
+          onClick={() => onOpenPanel("resonance")}
+          top="45%"
+        />
         <MemoryButton label="妈妈的除夕记忆" left="39%" onClick={() => onOpenPanel("memory1")} top="38%" variant="coral" />
         <MemoryButton label="我的除夕记忆" left="61%" onClick={() => onOpenPanel("memory1")} top="38%" variant="blue" />
         <SceneHint
