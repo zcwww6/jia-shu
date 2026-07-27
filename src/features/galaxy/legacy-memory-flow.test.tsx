@@ -71,6 +71,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
   });
 
   it("continues polling the same queued job on retry without another job POST", async () => {
+    vi.useFakeTimers();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }))
@@ -82,13 +83,86 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
     fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
     fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
-    await waitFor(() => expect(screen.getByText("网络短暂中断")).toBeInTheDocument());
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(screen.getByText("网络短暂中断")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
-    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toEqual([
+      ["/api/ai-jobs/job-1", { method: "GET" }],
+      ["/api/ai-jobs/job-1", { method: "GET" }],
+    ]);
+  });
+
+  it("continues polling the same processing job on retry without another job POST", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "processing" }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "网络短暂中断" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "completed" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(review), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(screen.getByText("网络短暂中断")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toEqual([
+      ["/api/ai-jobs/job-1", { method: "GET" }],
+      ["/api/ai-jobs/job-1", { method: "GET" }],
+    ]);
+  });
+
+  it("reloads the review for a completed job without starting another job", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "completed" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "审阅暂不可用" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(review), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await act(async () => {
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(screen.getByText("审阅暂不可用")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1")).toHaveLength(2);
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/memories/memory-1", { method: "GET" });
   });
 
   it("does not create a new job when a draft has an unknown job state", async () => {
