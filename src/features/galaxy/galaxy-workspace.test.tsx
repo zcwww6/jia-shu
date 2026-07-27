@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { galaxyZones } from "@/shared/mock/galaxy-data";
+import { galaxyZones, planetLinks, planets } from "@/shared/mock/galaxy-data";
 
 import { GalaxyWorkspace } from "./galaxy-workspace";
+
+const renderDemoGalaxy = () => render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} />);
 
 describe("GalaxyWorkspace", () => {
   it("renders server-provided planets when initialPlanets is passed", () => {
@@ -101,7 +103,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("renders the v7.3 galaxy shell, zones, route guide, and view controls", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     expect(screen.getByTestId("galaxy-app")).toHaveClass("auto-cruise-active", "immersive-ui-active");
     expect(screen.getByRole("heading", { name: "我的星系" })).toBeInTheDocument();
@@ -127,7 +129,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("opens and toggles an object action ring before entering a planet", async () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     const momPlanet = screen.getByRole("button", { name: "进入妈妈的星球漫游" });
     fireEvent.click(momPlanet);
@@ -157,7 +159,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("drives galaxy links from configurable star-map state", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     expect(screen.getByTestId("planet-link-link-me-mom")).toBeInTheDocument();
     expect(screen.getByTestId("planet-link-link-me-grandma-resonance")).toBeInTheDocument();
@@ -442,7 +444,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("routes planet object actions into theme, privacy, lifecycle, and book flows", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
     fireEvent.click(screen.getByRole("button", { name: "设置权限" }));
@@ -468,7 +470,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("opens a story scene from a planet surface memory node", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "开始靠近" }));
     fireEvent.click(screen.getByRole("button", { name: "打开故事场景：2018 新家除夕" }));
@@ -482,7 +484,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("switches internal screens without leaving the galaxy workspace", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "隐私星域" }));
 
@@ -492,7 +494,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("renders each v7.3 chapter as a distinct interactive scene", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-galaxy");
 
@@ -534,7 +536,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("lets users complete the demo path from memory to resonance to book share", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "记忆星群" }));
     fireEvent.click(screen.getByRole("button", { name: "新家里的第一个除夕" }));
@@ -556,7 +558,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("opens the planet roaming overlay from the recommended route", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "开始靠近" }));
 
@@ -566,7 +568,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("keeps planet roaming actions inside the immersive galaxy workflow", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "开始靠近" }));
     fireEvent.click(screen.getByRole("button", { name: "星球漫游点亮记忆星" }));
@@ -583,7 +585,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("auto cruise is the default galaxy mode without entering a planet route", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     expect(screen.getByTestId("galaxy-app")).toHaveClass("auto-cruise-active", "immersive-ui-active");
     expect(screen.getByTestId("galaxy-app")).not.toHaveClass("planet-roaming-active");
@@ -595,7 +597,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("supports elder mode and share confirmation", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "长辈大字模式" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("elder");
@@ -608,7 +610,7 @@ describe("GalaxyWorkspace", () => {
   });
 
   it("keeps secondary prototype controls interactive with visible feedback", () => {
-    render(<GalaxyWorkspace />);
+    renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "退出沉浸" }));
     fireEvent.click(screen.getAllByRole("button", { name: "自动巡航" })[0]);

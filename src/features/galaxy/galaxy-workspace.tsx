@@ -28,7 +28,6 @@ import {
   galaxyZones,
   memoryStars,
   planetLinks,
-  planets,
   resonanceTracks,
   storyNodes,
 } from "@/shared/mock/galaxy-data";
@@ -48,7 +47,6 @@ import {
   readGalaxyBookResult,
   readGalaxyExtractResult,
   readGalaxyResonanceResult,
-  readLitMemories,
   writeGalaxyBookResult,
   writeGalaxyResonanceResult,
   writeGalaxySharePayload,
@@ -158,10 +156,6 @@ const memoryPollDelayMs = 250;
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "请求失败，请稍后重试。";
-}
-
-export function shouldStartNewMemoryExtraction(job: LegacyMemoryAiJob | null) {
-  return job === null || job.status === "failed";
 }
 
 async function waitForMemoryExtraction(
@@ -356,7 +350,7 @@ export function GalaxyWorkspace({
   initialLinks?: PlanetLink[];
   initialArchivedPlanets?: Planet[];
 }) {
-  const startingPlanets = initialPlanets ?? planets;
+  const startingPlanets = initialPlanets ?? [];
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
   const [activeRouteStep, setActiveRouteStep] = useState(0);
   const [activePanel, setActivePanel] = useState<PanelKey | null>(null);
@@ -407,7 +401,7 @@ export function GalaxyWorkspace({
   const [bookResult, setBookResult] = useState<BookGenerateResponse | null>(
     () => readGalaxyBookResult(),
   );
-  const [litMemories, setLitMemories] = useState<MemoryStar[]>(() => readLitMemories());
+  const [litMemories, setLitMemories] = useState<MemoryStar[]>([]);
   const [quickRecordTargetPlanetId, setQuickRecordTargetPlanetId] = useState<string | null>(null);
   const [memoryReview, setMemoryReview] = useState<LegacyMemoryResponse | null>(null);
   const [reviewTitle, setReviewTitle] = useState("");
@@ -590,7 +584,7 @@ export function GalaxyWorkspace({
         allowBook: true,
       });
       setMemoryDraftId(draft.id);
-      await requestMemoryReview(draft.id);
+      await startMemoryExtraction(draft.id);
     } catch (error) {
       setMemoryFlowError(errorMessage(error));
     } finally {
@@ -598,12 +592,7 @@ export function GalaxyWorkspace({
     }
   }
 
-  async function requestMemoryReview(draftId: string, existingJob: LegacyMemoryAiJob | null = null) {
-    const job = existingJob && !shouldStartNewMemoryExtraction(existingJob)
-      ? existingJob
-      : await startLegacyMemoryExtraction(draftId);
-    setMemoryJob(job);
-    await waitForMemoryExtraction(job, setMemoryJob);
+  async function loadMemoryReview(draftId: string) {
     const review = await getLegacyMemoryReview(draftId);
     if (review.status !== "needs_confirmation") {
       throw new Error("记忆尚未准备好确认，请稍后重试。");
@@ -611,6 +600,13 @@ export function GalaxyWorkspace({
     setMemoryReview(review);
     setReviewTitle(review.title ?? "");
     setReviewSummary(review.summary ?? "");
+  }
+
+  async function startMemoryExtraction(draftId: string) {
+    const job = await startLegacyMemoryExtraction(draftId);
+    setMemoryJob(job);
+    await waitForMemoryExtraction(job, setMemoryJob);
+    await loadMemoryReview(draftId);
   }
 
   async function retryMemoryExtraction() {
@@ -622,7 +618,21 @@ export function GalaxyWorkspace({
     setMemoryFlowLoading(true);
     setMemoryFlowError(null);
     try {
-      await requestMemoryReview(memoryDraftId, memoryJob);
+      if (!memoryJob) {
+        setMemoryFlowError("AI 作业状态未知，请刷新或重新打开这条草稿后再试");
+        return;
+      }
+
+      if (memoryJob.status === "failed") {
+        await startMemoryExtraction(memoryDraftId);
+      } else if (memoryJob.status === "completed") {
+        await loadMemoryReview(memoryDraftId);
+      } else if (memoryJob.status === "queued" || memoryJob.status === "processing") {
+        await waitForMemoryExtraction(memoryJob, setMemoryJob);
+        await loadMemoryReview(memoryDraftId);
+      } else {
+        setMemoryFlowError("AI 作业状态未知，请刷新或重新打开这条草稿后再试");
+      }
     } catch (error) {
       setMemoryFlowError(errorMessage(error));
     } finally {
