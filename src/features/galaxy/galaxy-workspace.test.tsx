@@ -46,6 +46,25 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByText("念")).toBeInTheDocument();
   });
 
+  it("uses the memorial presentation for a persisted memorial planet in roaming mode", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-memorial", name: "外公的星球", type: "parent", lifeState: "memorial", version: 1,
+            role: "外公", visibility: "private", theme: "柔紫纪念光", position: { x: 50, y: 40 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "一颗被珍重保存的纪念星。",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进入外公的星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入星球" }));
+
+    expect(screen.getByRole("dialog", { name: "外公的星球漫游" }).querySelector(".inner-planet-body")).toHaveClass("memorial");
+  });
+
   it("uses server-provided planets for the recommended route interaction", () => {
     render(
       <GalaxyWorkspace

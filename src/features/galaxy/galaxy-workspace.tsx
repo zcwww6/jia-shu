@@ -3009,6 +3009,7 @@ function PlanetRoamingOverlay({
   onClose: () => void;
   onQuickRecord: () => void;
 }) {
+  const presentationType = getPlanetPresentationType(planet);
   const nodes = storyNodes.filter((node) => node.planetId === planet.id);
   const memories = memoryStars.filter((memory) => memory.planetId === planet.id);
   const [activeNodeId, setActiveNodeId] = useState(nodes[0]?.id);
@@ -3036,7 +3037,7 @@ function PlanetRoamingOverlay({
             <span>返回星系</span>
           </div>
           <div className="inner-planet-preview">
-            <div className={`inner-planet-body ${planet.type}`} />
+            <div className={`inner-planet-body ${presentationType}`} />
           </div>
           <div>
             <h2>{planet.name}</h2>
