@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { galaxyZones } from "@/shared/mock/galaxy-data";
 
@@ -27,6 +27,23 @@ describe("GalaxyWorkspace", () => {
 
     expect(screen.getByRole("button", { name: "进入服务器星球漫游" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入妈妈的星球漫游" })).not.toBeInTheDocument();
+  });
+
+  it("renders a persisted memorial family member as a memorial planet instead of an unclassified node", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-memorial", name: "外公的星球", type: "other", lifeState: "memorial", version: 1,
+            role: "外公", visibility: "private", theme: "柔紫纪念光", position: { x: 50, y: 40 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "一颗被珍重保存的纪念星。",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "进入外公的星球漫游" })).toHaveClass("memorial-planet");
+    expect(screen.getByText("念")).toBeInTheDocument();
   });
 
   it("uses server-provided planets for the recommended route interaction", () => {
@@ -136,25 +153,121 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByTestId("planet-link-link-me-grandma-resonance")).toBeInTheDocument();
   });
 
-  it("adds, hides, restores, and removes planets inside the galaxy editor", async () => {
-    render(<GalaxyWorkspace />);
+  it("persists planet management and the first family connection from the legacy editor", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/planets" && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          id: "server-new", name: "新家庭星球 1", type: "partner", lifeState: "active",
+          visibility: "family", role: "待命名星球", theme: "新生星环",
+          summary: "一颗刚加入星系的家庭星球，可继续编辑主题、权限和连接线。",
+          position: { x: 24, y: 58 }, version: 1,
+        }), { status: 201 });
+      }
+      if (url === "/api/planets/server-self/relationships" && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "relationship-new" }), { status: 201 });
+      }
+      if (url === "/api/planets/server-mom" && init?.method === "DELETE") {
+        return new Response(JSON.stringify({ id: "server-mom", version: 3, archived: true }), { status: 200 });
+      }
+      if (url === "/api/planets/server-mom/restore" && init?.method === "POST") {
+        return new Response(JSON.stringify({ id: "server-mom", version: 4, archived: false }), { status: 200 });
+      }
+      if (url === "/api/planets/server-new" && init?.method === "DELETE") {
+        return new Response(JSON.stringify({ id: "server-new", version: 2, archived: true }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `unexpected request ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-self", name: "我的星球", type: "self", version: 1, role: "私密核心",
+            visibility: "private", theme: "极光家书", position: { x: 40, y: 40 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "家庭管理员的核心星球。",
+          },
+          {
+            id: "server-mom", name: "妈妈的星球", type: "parent", version: 2, role: "母亲",
+            visibility: "family", theme: "暖橘星环", position: { x: 55, y: 35 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "一颗真实保存的家人星球。",
+          },
+        ]}
+        initialLinks={[]}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
     fireEvent.click(screen.getByRole("button", { name: "隐藏星球" }));
-    expect(screen.queryByRole("button", { name: "进入妈妈的星球漫游" })).not.toBeInTheDocument();
-    expect(screen.queryByTestId("planet-link-link-me-mom")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/planets/server-mom",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "星图编辑" }));
     fireEvent.click(screen.getByRole("button", { name: "恢复妈妈的星球" }));
-    expect(screen.getByRole("button", { name: "进入妈妈的星球漫游" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/planets/server-mom/restore",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "新增星球" }));
-    expect(screen.getByRole("button", { name: "进入新家庭星球 1漫游" })).toBeInTheDocument();
-    expect(screen.getByText("手动新增星轨")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "进入新家庭星球 1漫游" })).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/planets/server-self/relationships",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "移除新家庭星球 1" }));
     await waitFor(() => {
-      expect(screen.queryByRole("button", { name: "进入新家庭星球 1漫游" })).not.toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/planets/server-new",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+  });
+
+  it("shows an archived family planet from the server read model and restores it through the database", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "archived-mom", version: 5, archived: false }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[
+          {
+            id: "server-self", name: "我的星球", type: "self", version: 1, role: "私密核心",
+            visibility: "private", theme: "极光家书", position: { x: 40, y: 40 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "家庭管理员的核心星球。",
+          },
+        ]}
+        initialArchivedPlanets={[
+          {
+            id: "archived-mom", name: "妈妈的星球", type: "parent", version: 4, role: "母亲",
+            visibility: "family", theme: "暖橘星环", position: { x: 55, y: 35 },
+            stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "一颗可以恢复的家人星球。",
+          },
+        ]}
+        initialLinks={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "星图编辑" }));
+    fireEvent.click(screen.getByRole("button", { name: "恢复妈妈的星球" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/planets/archived-mom/restore",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(screen.getByRole("button", { name: "进入妈妈的星球漫游" })).toBeInTheDocument();
     });
   });
 

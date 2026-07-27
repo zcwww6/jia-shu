@@ -1,7 +1,9 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 import type { StoredSharedBook } from "@/shared/types/galaxy";
 import { getPrismaClient } from "@/server/db/client";
+
+type SharedBookDatabaseClient = Pick<PrismaClient, "sharedBook">;
 
 type SharedBookRecord = {
   token: string;
@@ -12,60 +14,125 @@ type SharedBookRecord = {
   createdAt: Date;
 };
 
-export async function createSharedBook(input: {
+export type CreateSharedBookSnapshotInput = {
   userId: string;
+  galaxyId: string;
+  bookId: string;
+  legacySnapshot: false;
   token: string;
-  draft: StoredSharedBook["draft"];
+  draft: Prisma.InputJsonValue;
   body: string;
-  sections: StoredSharedBook["sections"];
-  share: StoredSharedBook["share"];
-  createdAt: string;
-}) {
-  const prisma = getPrismaClient();
+  sections: Prisma.InputJsonValue;
+  share: Prisma.InputJsonValue;
+};
 
-  const record = await prisma.sharedBook.create({
+const sharedBookSelect = {
+  token: true,
+  draft: true,
+  body: true,
+  sections: true,
+  share: true,
+  createdAt: true,
+} as const;
+
+export async function createSharedBookSnapshot(
+  input: CreateSharedBookSnapshotInput,
+  client?: SharedBookDatabaseClient,
+) {
+  const prisma = client ?? getPrismaClient();
+
+  return prisma.sharedBook.create({
     data: {
       userId: input.userId,
+      galaxyId: input.galaxyId,
+      bookId: input.bookId,
+      legacySnapshot: false,
       token: input.token,
-      draft: toInputJsonValue(input.draft),
+      draft: input.draft,
       body: input.body,
-      sections: toInputJsonValue(input.sections),
-      share: toInputJsonValue(input.share),
-      createdAt: new Date(input.createdAt),
+      sections: input.sections,
+      share: input.share,
     },
-    select: {
-      token: true,
-      draft: true,
-      body: true,
-      sections: true,
-      share: true,
-      createdAt: true,
-    },
+    select: { id: true, token: true },
   });
-
-  return mapStoredSharedBook(record);
 }
 
 export async function findSharedBookByToken(token: string) {
   const prisma = getPrismaClient();
+  const record = await prisma.sharedBook.findFirst({
+    where: { token, bookId: { not: null }, legacySnapshot: false, revokedAt: null },
+    select: sharedBookSelect,
+  });
 
-  const record = await prisma.sharedBook.findUnique({
-    where: { token },
-    select: {
-      token: true,
-      draft: true,
-      body: true,
-      sections: true,
-      share: true,
-      createdAt: true,
+  return record ? mapStoredSharedBook(record) : null;
+}
+
+export async function listActiveBookShareSummaries(input: {
+  userId: string;
+  galaxyId: string;
+  bookId: string;
+}) {
+  const records = await getPrismaClient().sharedBook.findMany({
+    where: {
+      userId: input.userId,
+      galaxyId: input.galaxyId,
+      bookId: input.bookId,
+      legacySnapshot: false,
+      revokedAt: null,
     },
+    select: { token: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return records.map((record) => ({ token: record.token, createdAt: record.createdAt.toISOString() }));
+}
+
+export async function revokeSharedBookSnapshot(
+  input: {
+    userId: string;
+    galaxyId: string;
+    bookId: string;
+    token: string;
+    now?: Date;
+  },
+  client?: SharedBookDatabaseClient,
+) {
+  const prisma = client ?? getPrismaClient();
+  const record = await prisma.sharedBook.findFirst({
+    where: {
+      userId: input.userId,
+      galaxyId: input.galaxyId,
+      bookId: input.bookId,
+      token: input.token,
+      legacySnapshot: false,
+    },
+    select: { id: true, revokedAt: true },
   });
 
   if (!record) {
     return null;
   }
 
-  return mapStoredSharedBook(record);
+  if (record.revokedAt) {
+    return { kind: "already_revoked" as const, id: record.id };
+  }
+
+  const result = await prisma.sharedBook.updateMany({
+    where: {
+      id: record.id,
+      userId: input.userId,
+      galaxyId: input.galaxyId,
+      bookId: input.bookId,
+      token: input.token,
+      legacySnapshot: false,
+      revokedAt: null,
+    },
+    data: { revokedAt: input.now ?? new Date() },
+  });
+
+  return result.count === 1
+    ? { kind: "revoked" as const, id: record.id }
+    : { kind: "already_revoked" as const, id: record.id };
 }
 
 function mapStoredSharedBook(record: SharedBookRecord): StoredSharedBook {
@@ -77,8 +144,4 @@ function mapStoredSharedBook(record: SharedBookRecord): StoredSharedBook {
     share: record.share as unknown as StoredSharedBook["share"],
     createdAt: record.createdAt.toISOString(),
   };
-}
-
-function toInputJsonValue(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }

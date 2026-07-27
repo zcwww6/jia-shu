@@ -12,5 +12,11 @@ export default async function GalaxyPage() {
   }
   const homeData = await getHomeData(userId);
 
-  return <GalaxyWorkspace initialPlanets={homeData.planets} />;
+  return (
+    <GalaxyWorkspace
+      initialArchivedPlanets={homeData.archivedPlanets}
+      initialLinks={homeData.relationships}
+      initialPlanets={homeData.planets}
+    />
+  );
 }

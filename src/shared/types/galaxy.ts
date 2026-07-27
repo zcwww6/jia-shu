@@ -16,7 +16,94 @@ export type PlanetType =
   | "child"
   | "memorial"
   | "public"
-  | "partner";
+  | "partner"
+  | "other";
+
+export type PersistedPlanetLifeState = "active" | "memorial";
+
+export type PlanetLifeState = "ACTIVE" | "MEMORIAL";
+
+export type PlanetVisualKind =
+  | "self"
+  | "parent"
+  | "child"
+  | "partner"
+  | "ancestor"
+  | "other";
+
+function normalizePlanetType(type: PlanetType): PlanetVisualKind {
+  if (type === "self" || type === "parent" || type === "child" || type === "partner") {
+    return type;
+  }
+
+  return type === "memorial" ? "ancestor" : "other";
+}
+
+export function normalizePlanetLifeState(input: {
+  type: PlanetType;
+  lifeState: PersistedPlanetLifeState | null;
+}) {
+  if (input.lifeState === "memorial" || input.type === "memorial") {
+    return { lifeState: "MEMORIAL" as const, visualKind: "ancestor" as const };
+  }
+
+  return {
+    lifeState: "ACTIVE" as const,
+    visualKind: normalizePlanetType(input.type),
+  };
+}
+
+export function getPlanetPresentationType(input: {
+  type: PlanetType;
+  lifeState?: PersistedPlanetLifeState | null;
+}): PlanetType {
+  return normalizePlanetLifeState({
+    type: input.type,
+    lifeState: input.lifeState ?? null,
+  }).lifeState === "MEMORIAL"
+    ? "memorial"
+    : input.type;
+}
+
+export interface PlanetReadModel {
+  id: string;
+  userId: string;
+  galaxyId: string;
+  name: string;
+  type: PlanetType;
+  lifeState: PersistedPlanetLifeState;
+  visualKind: PlanetVisualKind;
+  visibility: Visibility;
+  role: string | null;
+  theme: string | null;
+  summary: string | null;
+  positionX: number | null;
+  positionY: number | null;
+  coverAssetId: string | null;
+  version: number;
+  archivedAt: string | null;
+  deletedAt: string | null;
+  memoryCount: number;
+  resonanceCount: number;
+  bookCount: number;
+}
+
+export type PlanetReadModelInput = Omit<
+  PlanetReadModel,
+  "lifeState" | "visualKind"
+> & {
+  lifeState: PersistedPlanetLifeState | null;
+};
+
+export function createPlanetReadModel(input: PlanetReadModelInput): PlanetReadModel {
+  const normalized = normalizePlanetLifeState(input);
+
+  return {
+    ...input,
+    lifeState: normalized.lifeState === "MEMORIAL" ? "memorial" : "active",
+    visualKind: normalized.visualKind,
+  };
+}
 
 export type PlanetLinkKind =
   | "family"
@@ -46,6 +133,7 @@ export interface Planet {
   id: string;
   name: string;
   type: PlanetType;
+  lifeState?: PersistedPlanetLifeState;
   role: string;
   visibility: Visibility;
   theme: string;
@@ -59,6 +147,8 @@ export interface Planet {
     bookDrafts: number;
   };
   summary: string;
+  version?: number;
+  coverAssetId?: string | null;
 }
 
 export interface PlanetLink {

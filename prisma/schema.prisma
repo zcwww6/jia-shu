@@ -13,6 +13,12 @@ enum Visibility {
   public
 }
 
+enum ContentVisibility {
+  private
+  family
+  selected
+}
+
 enum PlanetType {
   self
   parent
@@ -20,21 +26,99 @@ enum PlanetType {
   memorial
   public
   partner
+  other
+}
+
+enum PlanetLifeState {
+  active
+  memorial
+}
+
+enum PlanetRelationshipKind {
+  self
+  parent
+  child
+  partner
+  ancestor
+  other
+}
+
+enum MemoryStatus {
+  draft
+  processing
+  needs_confirmation
+  confirmed
+  archived
+}
+
+enum MemoryAssetKind {
+  text
+  image
+  audio
+  document
+  planet_cover
+}
+
+enum AssetProcessingStatus {
+  stored
+  processing
+  ready
+  failed
+}
+
+// Each value corresponds to a concrete MVP capability, avoiding a generic job bucket.
+enum AiJobKind {
+  text_extraction
+  image_extraction
+  audio_transcription
+  document_extraction
+  embedding
+  resonance_scan
+  book_generation
+}
+
+enum AiJobStatus {
+  queued
+  processing
+  succeeded
+  failed
+}
+
+enum ResonanceStatus {
+  candidate
+  confirmed
+  rejected
+}
+
+enum BookStatus {
+  draft
+  ready
+  published
+  archived
 }
 
 model User {
-  id            String      @id @default(cuid())
-  name          String?
-  email         String?     @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  galaxies      Galaxy[]
-  planets       Planet[]
-  sharedBooks   SharedBook[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id                   String                @id @default(cuid())
+  name                 String?
+  email                String?               @unique
+  emailVerified        DateTime?
+  image                String?
+  accounts             Account[]
+  sessions             Session[]
+  galaxies             Galaxy[]
+  planets              Planet[]
+  memories             Memory[]
+  memoryAssets         MemoryAsset[]
+  aiJobs               AiJob[]
+  planetRelationships  PlanetRelationship[]
+  resonanceCandidates  ResonanceCandidate[]
+  resonanceScanLeases  ResonanceScanLease[]
+  books                Book[]
+  bookMemories         BookMemory[]
+  sharedBooks          SharedBook[]
+  idempotencyRecords   IdempotencyRecord[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 }
 
 model Account {
@@ -75,47 +159,357 @@ model VerificationToken {
 }
 
 model Galaxy {
-  id         String   @id @default(cuid())
-  userId     String   @unique
-  name       String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  planets    Planet[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id                   String                @id @default(cuid())
+  userId               String                @unique
+  name                 String
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  planets              Planet[]
+  memories             Memory[]
+  memoryAssets         MemoryAsset[]
+  aiJobs               AiJob[]
+  planetRelationships  PlanetRelationship[]
+  resonanceCandidates  ResonanceCandidate[]
+  resonanceScanLeases  ResonanceScanLease[]
+  books                Book[]
+  bookMemories         BookMemory[]
+  sharedBooks          SharedBook[]
+  idempotencyRecords   IdempotencyRecord[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@unique([id, userId])
 }
 
 model Planet {
-  id         String     @id @default(cuid())
-  galaxyId   String
-  userId     String
-  name       String
-  type       PlanetType
-  visibility Visibility @default(private)
-  role       String?
-  theme      String?
-  summary    String?
-  positionX  Int?
-  positionY  Int?
-  galaxy     Galaxy     @relation(fields: [galaxyId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id                String          @id @default(cuid())
+  galaxyId          String
+  userId            String
+  name              String
+  // The enum retains memorial solely for read mapper compatibility; migration blocks it from persistence.
+  type              PlanetType
+  lifeState         PlanetLifeState @default(active)
+  visibility        Visibility      @default(private)
+  role              String?
+  theme             String?
+  summary           String?
+  positionX         Int?
+  positionY         Int?
+  coverAssetId      String?         @unique
+  version           Int             @default(1)
+  archivedAt        DateTime?
+  deletedAt         DateTime?
+  purgeAfter        DateTime?
+  galaxy            Galaxy          @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  coverAsset        MemoryAsset?    @relation("PlanetCoverAsset", fields: [coverAssetId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  memories          Memory[]
+  assets            MemoryAsset[]   @relation("PlanetAssets")
+  aiJobs            AiJob[]         @relation("PlanetAiJobs")
+  relationshipsFrom PlanetRelationship[] @relation("PlanetRelationshipSource")
+  relationshipsTo   PlanetRelationship[] @relation("PlanetRelationshipTarget")
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
+  @@unique([id, userId, galaxyId])
+  @@unique([coverAssetId, userId, galaxyId])
   @@index([galaxyId])
   @@index([userId])
+  @@index([userId, galaxyId, deletedAt])
+}
+
+model Memory {
+  id               String            @id @default(cuid())
+  userId           String
+  galaxyId         String
+  planetId         String
+  sourceText       String            @db.Text
+  title            String?
+  summary          String?           @db.Text
+  tags             Json?
+  uncertainFields  Json?
+  occurredAtLabel  String?
+  occurredAt       DateTime?
+  locationLabel    String?
+  people           Json?
+  visibility       ContentVisibility @default(private)
+  allowResonance   Boolean           @default(false)
+  allowBook        Boolean           @default(false)
+  status           MemoryStatus      @default(draft)
+  confirmedAt      DateTime?
+  version          Int               @default(1)
+  embedding        Json?
+  embeddingModel   String?
+  deletedAt        DateTime?
+  purgeAfter       DateTime?
+  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy           Galaxy            @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  planet           Planet            @relation(fields: [planetId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  assets           MemoryAsset[]     @relation("MemoryAssets")
+  aiJobs           AiJob[]           @relation("MemoryAiJobs")
+  resonanceSources ResonanceCandidate[] @relation("ResonanceSourceMemory")
+  resonanceTargets ResonanceCandidate[] @relation("ResonanceTargetMemory")
+  bookMemories     BookMemory[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@index([userId, galaxyId, deletedAt])
+  @@index([planetId, status, deletedAt])
+}
+
+model MemoryAsset {
+  id                   String                @id @default(cuid())
+  userId               String
+  galaxyId             String
+  planetId             String
+  memoryId             String?
+  kind                 MemoryAssetKind
+  visibility           ContentVisibility     @default(private)
+  storageKey           String                @unique
+  mimeType             String
+  sizeBytes            Int
+  sha256               String
+  originalName         String
+  width                Int?
+  height               Int?
+  durationMs           Int?
+  extractedText        String?               @db.Text
+  transcript           String?               @db.Text
+  thumbnailStorageKey  String?
+  normalizedStorageKey String?
+  status               AssetProcessingStatus @default(stored)
+  version              Int                   @default(1)
+  deletedAt            DateTime?
+  purgeAfter           DateTime?
+  user                 User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy               Galaxy                @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  planet               Planet                @relation("PlanetAssets", fields: [planetId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  memory               Memory?               @relation("MemoryAssets", fields: [memoryId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  coverForPlanet       Planet?               @relation("PlanetCoverAsset")
+  aiJobs               AiJob[]               @relation("MemoryAssetAiJobs")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@index([userId, galaxyId, deletedAt])
+  @@index([planetId, deletedAt])
+  @@index([memoryId])
+  @@index([userId, galaxyId, sha256])
+}
+
+model AiJob {
+  id                   String      @id @default(cuid())
+  userId               String
+  galaxyId             String
+  planetId             String?
+  memoryId             String?
+  assetId              String?
+  resonanceCandidateId String?
+  bookId               String?
+  kind                 AiJobKind
+  status               AiJobStatus @default(queued)
+  consentCapturedAt    DateTime
+  requestHash          String
+  model                String?
+  attempts             Int         @default(0)
+  leaseToken           String?
+  leaseExpiresAt       DateTime?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  errorCode            String?
+  errorSummary         String?     @db.Text
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy               Galaxy      @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  planet               Planet?     @relation("PlanetAiJobs", fields: [planetId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  memory               Memory?     @relation("MemoryAiJobs", fields: [memoryId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  asset                MemoryAsset? @relation("MemoryAssetAiJobs", fields: [assetId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  resonanceCandidate   ResonanceCandidate? @relation("ResonanceCandidateAiJobs", fields: [resonanceCandidateId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  book                 Book?       @relation("BookAiJobs", fields: [bookId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@index([status, leaseExpiresAt])
+  @@index([userId, galaxyId, status])
+  @@index([memoryId])
+  @@index([assetId])
+  @@index([resonanceCandidateId])
+  @@index([bookId])
+}
+
+model PlanetRelationship {
+  id               String                 @id @default(cuid())
+  userId           String
+  galaxyId         String
+  sourcePlanetId   String
+  targetPlanetId   String
+  relationshipType PlanetRelationshipKind
+  label            String?
+  visibility       ContentVisibility      @default(private)
+  confirmedAt      DateTime?
+  version          Int                    @default(1)
+  deletedAt        DateTime?
+  purgeAfter       DateTime?
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy           Galaxy                 @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  sourcePlanet     Planet                 @relation("PlanetRelationshipSource", fields: [sourcePlanetId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  targetPlanet     Planet                 @relation("PlanetRelationshipTarget", fields: [targetPlanetId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@unique([userId, galaxyId, sourcePlanetId, targetPlanetId, relationshipType])
+  @@index([userId, galaxyId, sourcePlanetId, deletedAt])
+  @@index([userId, galaxyId, targetPlanetId, deletedAt])
+}
+
+model ResonanceCandidate {
+  id             String          @id @default(cuid())
+  userId         String
+  galaxyId       String
+  sourceMemoryId String
+  targetMemoryId String
+  score          Float
+  reason         String          @db.Text
+  status         ResonanceStatus @default(candidate)
+  confirmedAt    DateTime?
+  rejectedAt     DateTime?
+  version        Int             @default(1)
+  deletedAt      DateTime?
+  purgeAfter     DateTime?
+  user           User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy         Galaxy          @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  sourceMemory   Memory          @relation("ResonanceSourceMemory", fields: [sourceMemoryId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  targetMemory   Memory          @relation("ResonanceTargetMemory", fields: [targetMemoryId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  aiJobs         AiJob[]         @relation("ResonanceCandidateAiJobs")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@unique([userId, galaxyId, sourceMemoryId, targetMemoryId])
+  @@index([userId, galaxyId, status, deletedAt])
+  @@index([sourceMemoryId])
+  @@index([targetMemoryId])
+}
+
+model ResonanceScanLease {
+  id             String   @id @default(cuid())
+  userId         String
+  galaxyId       String
+  sourceMemoryId String
+  targetMemoryId String
+  leaseToken     String
+  expiresAt      DateTime
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy         Galaxy   @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@unique([userId, galaxyId, sourceMemoryId, targetMemoryId])
+  @@index([expiresAt])
+}
+
+model Book {
+  id               String            @id @default(cuid())
+  userId           String
+  galaxyId         String
+  title            String?
+  sourceRange      String?
+  themeTemplateKey String?
+  draft            Json?
+  body             String?           @db.Text
+  sections         Json?
+  visibility       ContentVisibility @default(private)
+  status           BookStatus        @default(draft)
+  version          Int               @default(1)
+  publishedAt      DateTime?
+  archivedAt       DateTime?
+  deletedAt        DateTime?
+  purgeAfter       DateTime?
+  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy           Galaxy            @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  memories         BookMemory[]
+  aiJobs           AiJob[]           @relation("BookAiJobs")
+  sharedBooks      SharedBook[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@index([userId, galaxyId, status, deletedAt])
+}
+
+model BookMemory {
+  id         String   @id @default(cuid())
+  userId     String
+  galaxyId   String
+  bookId     String
+  memoryId   String
+  chapterKey String?
+  sortOrder  Int      @default(0)
+  version    Int      @default(1)
+  deletedAt  DateTime?
+  purgeAfter DateTime?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy     Galaxy   @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  book       Book     @relation(fields: [bookId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  memory     Memory   @relation(fields: [memoryId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@unique([bookId, memoryId])
+  @@index([userId, galaxyId, bookId, deletedAt])
+  @@index([memoryId])
 }
 
 model SharedBook {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  draft     Json
-  body      String   @db.Text
-  sections  Json
-  share     Json
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  userId         String
+  galaxyId       String?
+  bookId         String?
+  legacySnapshot Boolean  @default(false)
+  token          String   @unique
+  draft          Json
+  body           String   @db.Text
+  sections       Json
+  share          Json
+  revokedAt      DateTime?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy         Galaxy?  @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  book           Book?    @relation(fields: [bookId, userId, galaxyId], references: [id, userId, galaxyId], onDelete: Restrict)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
+  @@unique([id, userId, galaxyId])
   @@index([userId])
+  @@index([userId, galaxyId])
+  @@index([bookId])
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  userId         String
+  galaxyId       String
+  scope          String
+  key            String
+  requestHash    String
+  operationId    String   @unique @default(cuid())
+  status         String   @default("processing")
+  resourceType   String?
+  resourceId     String?
+  result         Json?
+  response       Json?
+  responseStatus Int?
+  completedAt    DateTime?
+  expiresAt      DateTime?
+  user           User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  galaxy         Galaxy   @relation(fields: [galaxyId, userId], references: [id, userId], onDelete: Restrict)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([id, userId, galaxyId])
+  @@unique([userId, galaxyId, scope, key])
+  @@index([userId, galaxyId, scope, status])
+  @@index([expiresAt])
 }

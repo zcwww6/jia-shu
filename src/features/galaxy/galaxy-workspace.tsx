@@ -33,15 +33,16 @@ import {
   storyNodes,
 } from "@/shared/mock/galaxy-data";
 import { demoSession } from "@/shared/mock/demo-session";
-import type {
-  BookGenerateResponse,
-  GalaxyZoneKey,
-  MemoryExtractResponse,
-  MemoryStar,
-  Planet,
-  PlanetLink,
-  PlanetLinkKind,
-  ResonanceScanResponse,
+import {
+  getPlanetPresentationType,
+  type BookGenerateResponse,
+  type GalaxyZoneKey,
+  type MemoryExtractResponse,
+  type MemoryStar,
+  type Planet,
+  type PlanetLink,
+  type PlanetLinkKind,
+  type ResonanceScanResponse,
 } from "@/shared/types/galaxy";
 
 import {
@@ -62,6 +63,13 @@ import {
   scanResonance,
   useLoopApi,
 } from "./use-loop-api";
+import {
+  archiveLegacyPlanet,
+  createLegacyPlanet,
+  createLegacyRelationship,
+  restoreLegacyPlanet,
+  type LegacyManagedPlanet,
+} from "./legacy-galaxy-api";
 
 interface GalaxyView {
   panX: number;
@@ -133,6 +141,7 @@ const planetClassByType: Record<Planet["type"], string> = {
   memorial: "planet ancestor memorial-planet has-ring",
   public: "planet friend public-planet",
   partner: "planet friend has-ring",
+  other: "planet friend has-ring",
 };
 
 const planetBadgeByType: Record<Planet["type"], string> = {
@@ -142,6 +151,7 @@ const planetBadgeByType: Record<Planet["type"], string> = {
   memorial: "念",
   public: "旅",
   partner: "伴",
+  other: "他",
 };
 
 const planetLinkKindLabels: Record<PlanetLinkKind, string> = {
@@ -273,10 +283,34 @@ const zoneContent: Record<
   },
 };
 
+function toVisualPlanet(result: LegacyManagedPlanet, fallback: Planet): Planet {
+  return {
+    ...fallback,
+    id: result.id,
+    name: result.name,
+    type: result.type,
+    lifeState: result.lifeState,
+    visibility: result.visibility,
+    role: result.role ?? fallback.role,
+    theme: result.theme ?? fallback.theme,
+    summary: result.summary ?? fallback.summary,
+    position: {
+      x: result.position.x ?? fallback.position.x,
+      y: result.position.y ?? fallback.position.y,
+    },
+    version: result.version,
+    coverAssetId: result.coverAssetId,
+  };
+}
+
 export function GalaxyWorkspace({
   initialPlanets = planets,
+  initialLinks = planetLinks,
+  initialArchivedPlanets = [],
 }: {
   initialPlanets?: Planet[];
+  initialLinks?: PlanetLink[];
+  initialArchivedPlanets?: Planet[];
 }) {
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
   const [activeRouteStep, setActiveRouteStep] = useState(0);
@@ -300,7 +334,8 @@ export function GalaxyWorkspace({
   const [isDragging, setIsDragging] = useState(false);
   const [galaxyPlanets, setGalaxyPlanets] = useState<Planet[]>(initialPlanets);
   const [hiddenPlanetIds, setHiddenPlanetIds] = useState<string[]>([]);
-  const [galaxyLinks, setGalaxyLinks] = useState<PlanetLink[]>(planetLinks);
+  const [archivedPlanets, setArchivedPlanets] = useState<Planet[]>(initialArchivedPlanets);
+  const [galaxyLinks, setGalaxyLinks] = useState<PlanetLink[]>(initialLinks);
   const [visibleLinkKinds, setVisibleLinkKinds] = useState<PlanetLinkKind[]>([
     "family",
     "resonance",
@@ -346,10 +381,7 @@ export function GalaxyWorkspace({
       ),
     [galaxyLinks, visibleLinkKinds, visiblePlanetIds],
   );
-  const hiddenPlanets = useMemo(
-    () => galaxyPlanets.filter((planet) => hiddenPlanetIds.includes(planet.id)),
-    [galaxyPlanets, hiddenPlanetIds],
-  );
+  const hiddenPlanets = archivedPlanets;
   const anchorPlanetIds = useMemo(() => {
     const selfPlanet = galaxyPlanets.find((planet) => planet.type === "self");
     const parentPlanet = galaxyPlanets.find((planet) => planet.type === "parent");
@@ -629,8 +661,8 @@ export function GalaxyWorkspace({
     setToast(`「${planet.name}」可在星球操作环内重命名`);
   }
 
-  function addMockPlanet() {
-    const nextIndex = galaxyPlanets.filter((planet) => planet.id.startsWith("mock-new-")).length + 1;
+  async function addFamilyPlanet() {
+    const nextIndex = galaxyPlanets.filter((planet) => planet.name.startsWith("新家庭星球 ")).length + 1;
     const basePosition = [
       { x: 24, y: 58 },
       { x: 84, y: 55 },
@@ -638,7 +670,7 @@ export function GalaxyWorkspace({
       { x: 58, y: 24 },
     ][(nextIndex - 1) % 4];
     const newPlanet: Planet = {
-      id: `mock-new-${Date.now()}`,
+      id: `pending-family-planet-${Date.now()}`,
       name: `新家庭星球 ${nextIndex}`,
       type: "partner",
       role: "待命名星球",
@@ -649,66 +681,123 @@ export function GalaxyWorkspace({
       summary: "一颗刚加入星系的家庭星球，可继续编辑主题、权限和连接线。",
     };
     const anchorPlanet = galaxyPlanets.find((planet) => planet.id === anchorPlanetIds.self) ?? galaxyPlanets[0];
-    setGalaxyPlanets((current) => [...current, newPlanet]);
-    if (anchorPlanet) {
-      setGalaxyLinks((current) => [
-        ...current,
-        {
-          id: `link-${anchorPlanet.id}-${newPlanet.id}`,
+
+    try {
+      const created = await createLegacyPlanet({
+        name: newPlanet.name,
+        type: "partner",
+        lifeState: "active",
+        visibility: "family",
+        role: newPlanet.role,
+        theme: newPlanet.theme,
+        summary: newPlanet.summary,
+        position: basePosition,
+      });
+      const persistedPlanet = toVisualPlanet(created, newPlanet);
+
+      setGalaxyPlanets((current) => [...current, persistedPlanet]);
+      setHiddenPlanetIds((current) => current.filter((id) => id !== persistedPlanet.id));
+      setSelectedPlanetId(persistedPlanet.id);
+      setClosingPlanetId(null);
+      setStarMapEditorOpen(true);
+
+      if (!anchorPlanet) {
+        setToast(`已保存「${persistedPlanet.name}」`);
+        return;
+      }
+
+      try {
+        const relationship = await createLegacyRelationship({
           sourcePlanetId: anchorPlanet.id,
-          targetPlanetId: newPlanet.id,
-          kind: "custom",
-          status: "confirmed",
+          targetPlanetId: persistedPlanet.id,
+          relationshipType: "other",
           label: "手动新增星轨",
           visibility: "family",
-          strength: 0.46,
-          rule: "manual",
-        },
-      ]);
+        });
+
+        setGalaxyLinks((current) => [
+          ...current,
+          {
+            id: relationship.id,
+            sourcePlanetId: relationship.sourcePlanetId,
+            targetPlanetId: relationship.targetPlanetId,
+            kind: "custom",
+            status: "confirmed",
+            label: relationship.label ?? "手动新增星轨",
+            visibility: relationship.visibility,
+            strength: 1,
+            rule: "manual",
+          },
+        ]);
+        setToast(`已保存「${persistedPlanet.name}」并连接到家庭星系`);
+      } catch (error) {
+        setToast(error instanceof Error ? `星球已保存，但连接未完成：${error.message}` : "星球已保存，但连接未完成");
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "新增星球失败，请稍后重试");
     }
-    setHiddenPlanetIds((current) => current.filter((id) => id !== newPlanet.id));
-    setSelectedPlanetId(newPlanet.id);
-    setClosingPlanetId(null);
-    setStarMapEditorOpen(true);
-    setToast("已新增一颗 Mock 星球，并生成一条手动星轨");
   }
 
-  function hidePlanet(planetId: string) {
+  async function archivePlanetFromGalaxy(planetId: string) {
     const planet = galaxyPlanets.find((item) => item.id === planetId);
     if (!planet) return;
 
-    setHiddenPlanetIds((current) => (current.includes(planetId) ? current : [...current, planetId]));
-    setSelectedPlanetId(null);
-    setClosingPlanetId(null);
-    setRoamingPlanetId((current) => (current === planetId ? null : current));
-    setBookBeamPlanet((current) => (current?.id === planetId ? null : current));
-    setToast(`已从当前星图隐藏「${planet.name}」`);
+    if (planet.version === undefined) {
+      setToast("这颗演示星球尚未保存，登录后创建的家人星球才能归档");
+      return;
+    }
+
+    try {
+      const archived = await archiveLegacyPlanet(planetId, planet.version);
+      const archivedPlanet = { ...planet, version: archived.version };
+
+      setArchivedPlanets((current) => [
+        ...current.filter((item) => item.id !== planetId),
+        archivedPlanet,
+      ]);
+      setGalaxyPlanets((current) => current.filter((item) => item.id !== planetId));
+      setHiddenPlanetIds((current) => (current.includes(planetId) ? current : [...current, planetId]));
+      setSelectedPlanetId(null);
+      setClosingPlanetId(null);
+      setRoamingPlanetId((current) => (current === planetId ? null : current));
+      setBookBeamPlanet((current) => (current?.id === planetId ? null : current));
+      setToast(`已归档「${planet.name}」，可在星图编辑中恢复`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "归档星球失败，请稍后重试");
+    }
   }
 
-  function restorePlanet(planetId: string) {
-    const planet = galaxyPlanets.find((item) => item.id === planetId);
-    setHiddenPlanetIds((current) => current.filter((id) => id !== planetId));
-    if (planet) {
+  async function hidePlanet(planetId: string) {
+    await archivePlanetFromGalaxy(planetId);
+  }
+
+  async function restorePlanet(planetId: string) {
+    const planet = archivedPlanets.find((item) => item.id === planetId);
+    if (!planet || planet.version === undefined) {
+      setToast("找不到可恢复的已归档星球");
+      return;
+    }
+
+    try {
+      const restored = await restoreLegacyPlanet(planetId, planet.version);
+      setGalaxyPlanets((current) => {
+        const restoredPlanet = { ...planet, version: restored.version };
+        return current.some((item) => item.id === planetId)
+          ? current.map((item) => (item.id === planetId ? restoredPlanet : item))
+          : [...current, restoredPlanet];
+      });
+      setArchivedPlanets((current) => current.filter((item) => item.id !== planetId));
+      setHiddenPlanetIds((current) => current.filter((id) => id !== planetId));
       setSelectedPlanetId(planet.id);
       focusPlanet(planet.id);
-      setToast(`「${planet.name}」已回到星图`);
+      setToast(`「${planet.name}」已恢复到家庭星系`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "恢复星球失败，请稍后重试");
     }
   }
 
-  function removePlanet(planetId: string) {
-    const planet = galaxyPlanets.find((item) => item.id === planetId);
-    if (!planet) return;
-
-    setGalaxyPlanets((current) => current.filter((item) => item.id !== planetId));
-    setHiddenPlanetIds((current) => current.filter((id) => id !== planetId));
-    setGalaxyLinks((current) =>
-      current.filter((link) => link.sourcePlanetId !== planetId && link.targetPlanetId !== planetId),
-    );
-    setSelectedPlanetId(null);
-    setClosingPlanetId(null);
-    setRoamingPlanetId((current) => (current === planetId ? null : current));
-    setBookBeamPlanet((current) => (current?.id === planetId ? null : current));
-    setToast(`已移除「${planet.name}」及关联星轨`);
+  async function removePlanet(planetId: string) {
+    await archivePlanetFromGalaxy(planetId);
   }
 
   function toggleLinkKind(kind: PlanetLinkKind) {
@@ -727,7 +816,7 @@ export function GalaxyWorkspace({
     );
   }
 
-  function addCustomLinkFromSelected() {
+  async function addCustomLinkFromSelected() {
     if (!selectedPlanet) {
       setToast("请先点选一颗星球，再添加自定义星轨");
       return;
@@ -754,21 +843,33 @@ export function GalaxyWorkspace({
       return;
     }
 
-    setGalaxyLinks((current) => [
-      ...current,
-      {
-        id: `link-custom-${selectedPlanet.id}-${targetPlanet.id}-${Date.now()}`,
+    try {
+      const relationship = await createLegacyRelationship({
         sourcePlanetId: selectedPlanet.id,
         targetPlanetId: targetPlanet.id,
-        kind: "custom",
-        status: "confirmed",
+        relationshipType: "other",
         label: "手动配置星轨",
         visibility: "family",
-        strength: 0.52,
-        rule: "manual",
-      },
-    ]);
-    setToast(`已连接「${selectedPlanet.name}」和「${targetPlanet.name}」`);
+      });
+
+      setGalaxyLinks((current) => [
+        ...current,
+        {
+          id: relationship.id,
+          sourcePlanetId: relationship.sourcePlanetId,
+          targetPlanetId: relationship.targetPlanetId,
+          kind: "custom",
+          status: "confirmed",
+          label: relationship.label ?? "手动配置星轨",
+          visibility: relationship.visibility,
+          strength: 1,
+          rule: "manual",
+        },
+      ]);
+      setToast(`已连接「${selectedPlanet.name}」和「${targetPlanet.name}」`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "创建星轨失败，请稍后重试");
+    }
   }
 
   function toggleAutoCruise() {
@@ -1032,7 +1133,7 @@ export function GalaxyWorkspace({
                 hiddenPlanets={hiddenPlanets}
                 links={galaxyLinks}
                 onAddCustomLink={addCustomLinkFromSelected}
-                onAddPlanet={addMockPlanet}
+                onAddPlanet={addFamilyPlanet}
                 onClose={() => setStarMapEditorOpen(false)}
                 onRemovePlanet={removePlanet}
                 onRestorePlanet={restorePlanet}
@@ -1647,18 +1748,19 @@ function GalaxyPlanetObject({
   selected: boolean;
 }) {
   const style = { left: `${planet.position.x}%`, top: `${planet.position.y}%` };
+  const presentationType = getPlanetPresentationType(planet);
   const showActionRing = selected || closing;
 
   return (
     <>
       <button
         aria-label={`进入${planet.name}漫游`}
-        className={`${planetClassByType[planet.type]} ${selected ? "selected" : ""}`}
+        className={`${planetClassByType[presentationType]} ${selected ? "selected" : ""}`}
         onClick={() => onSelect(planet.id)}
         style={style}
         type="button"
       >
-        <span className="badge">{planetBadgeByType[planet.type]}</span>
+        <span className="badge">{planetBadgeByType[presentationType]}</span>
         <span className="planet-label">{planet.name.replace("的星球", "").replace("星球", "")}</span>
       </button>
 

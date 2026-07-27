@@ -55,6 +55,30 @@ describe("GalaxyPage", () => {
           stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 },
           summary: "来自服务端的初始化星球。",
         },
+        {
+          id: "server-mom",
+          name: "妈妈的星球",
+          type: "parent",
+          role: "母亲",
+          visibility: "family",
+          theme: "暖橘星环",
+          position: { x: 55, y: 35 },
+          stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 },
+          summary: "来自服务端的家庭星球。",
+        },
+      ],
+      relationships: [
+        {
+          id: "server-link",
+          sourcePlanetId: "server-self",
+          targetPlanetId: "server-mom",
+          kind: "custom",
+          status: "confirmed",
+          label: "手动配置星轨",
+          visibility: "family",
+          strength: 1,
+          rule: "manual",
+        },
       ],
     });
 
@@ -62,5 +86,6 @@ describe("GalaxyPage", () => {
 
     expect(getHomeData).toHaveBeenCalledWith("user-1");
     expect(screen.getByRole("button", { name: "进入服务器星球漫游" })).toBeInTheDocument();
+    expect(screen.getByTestId("planet-link-server-link")).toBeInTheDocument();
   });
 });

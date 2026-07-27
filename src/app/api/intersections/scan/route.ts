@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { scanResonanceWithFallback } from "@/server/ai/ai-client";
-import { ensureResonanceCandidate } from "@/server/ai/guardrails";
-import { isResonanceScanRequest } from "@/server/ai/schemas";
+import { LEGACY_AI_FEATURE_DISABLED_RESPONSE } from "@/shared/legacy-ai-entry";
 
 export async function POST(request: Request) {
-  const payload = await request.json();
+  void request;
 
-  if (!isResonanceScanRequest(payload)) {
-    return NextResponse.json({ message: "共鸣扫描请求格式不正确" }, { status: 400 });
-  }
-
-  const result = await scanResonanceWithFallback(payload);
-
-  return NextResponse.json(ensureResonanceCandidate(result));
+  return NextResponse.json(LEGACY_AI_FEATURE_DISABLED_RESPONSE, { status: 410 });
 }

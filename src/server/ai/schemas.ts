@@ -3,10 +3,16 @@ import type {
   BookGenerateResponse,
   MemoryExtractRequest,
   MemoryExtractResponse,
+  MemoryExtractSuggestion,
+  MemoryStar,
   PublishBookRequest,
   ResonanceScanRequest,
   ResonanceScanResponse,
 } from "@/shared/types/galaxy";
+
+export type ReviewableMemoryExtractResponse = Omit<MemoryExtractResponse, "status"> & {
+  status: "needs_confirmation";
+};
 
 export function isMemoryExtractRequest(value: unknown): value is MemoryExtractRequest {
   if (!value || typeof value !== "object") return false;
@@ -38,7 +44,16 @@ export function isBookGenerateRequest(value: unknown): value is BookGenerateRequ
 export function isMemoryExtractResponse(value: unknown): value is MemoryExtractResponse {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<MemoryExtractResponse>;
-  return !!candidate.memory && !!candidate.suggestion && typeof candidate.sourceText === "string";
+  return (
+    isMemoryStar(candidate.memory) &&
+    isMemoryExtractSuggestion(candidate.suggestion) &&
+    typeof candidate.sourceText === "string" &&
+    (candidate.status === "needs_confirmation" || candidate.status === "confirmed")
+  );
+}
+
+export function isReviewableMemoryExtractResponse(value: unknown): value is ReviewableMemoryExtractResponse {
+  return isMemoryExtractResponse(value) && value.status === "needs_confirmation";
 }
 
 export function isResonanceScanResponse(value: unknown): value is ResonanceScanResponse {
@@ -68,4 +83,46 @@ export function isPublishBookRequest(value: unknown): value is PublishBookReques
     typeof share.showSourceTitles === "boolean" &&
     typeof share.showOriginalText === "boolean"
   );
+}
+
+function isMemoryStar(value: unknown): value is MemoryStar {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.planetId === "string" &&
+    typeof value.title === "string" &&
+    typeof value.occurredAt === "string" &&
+    typeof value.location === "string" &&
+    stringArray(value.people) &&
+    stringArray(value.emotions) &&
+    isVisibility(value.visibility) &&
+    typeof value.summary === "string"
+  );
+}
+
+function isMemoryExtractSuggestion(value: unknown): value is MemoryExtractSuggestion {
+  if (!isRecord(value)) return false;
+
+  return (
+    typeof value.title === "string" &&
+    typeof value.occurredAt === "string" &&
+    typeof value.location === "string" &&
+    stringArray(value.people) &&
+    stringArray(value.emotions) &&
+    typeof value.summary === "string" &&
+    stringArray(value.uncertainFields)
+  );
+}
+
+function isVisibility(value: unknown) {
+  return value === "private" || value === "family" || value === "selected" || value === "public";
+}
+
+function stringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

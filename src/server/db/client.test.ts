@@ -19,6 +19,7 @@ describe("prisma client", () => {
 
   afterEach(() => {
     vi.resetModules();
+    vi.unstubAllEnvs();
     prismaClientMock.mockReset();
     prismaPgMock.mockReset();
     delete (globalThis as { prisma?: unknown }).prisma;
@@ -57,7 +58,7 @@ describe("prisma client", () => {
 
   it("reuses the same client for repeated calls in production", async () => {
     process.env.DATABASE_URL = "postgresql://demo";
-    process.env.NODE_ENV = "production";
+    vi.stubEnv("NODE_ENV", "production");
 
     const adapter = { kind: "adapter" };
     const client = { kind: "client" };

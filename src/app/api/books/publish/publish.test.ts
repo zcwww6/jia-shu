@@ -1,74 +1,25 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-
-const { saveSharedBook } = vi.hoisted(() => ({ saveSharedBook: vi.fn() }));
-const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-
-vi.mock("@/server/store/shared-books", () => ({
-  saveSharedBook,
-}));
-
-vi.mock("@/auth", () => ({
-  auth,
-}));
+import { describe, expect, it } from "vitest";
 
 import { POST } from "./route";
 
-const validPayload = {
-  draft: {
-    id: "book-draft-1",
-    title: "我们家的第一个新房除夕",
-    sourceRange: "binary_system" as const,
-    themeTemplateKey: "family_reunion",
-    sourceMemoryIds: ["memory-1", "memory-2"],
-    intro: "intro",
-    chapters: [],
-  },
-  body: "narrative body",
-  sections: [
-    { title: "共同记住的一天", body: "body", sourceMemoryIds: ["memory-1"] },
-  ],
-  share: { showBody: true, showSourceTitles: true, showOriginalText: false },
-};
-
-function jsonRequest(body: unknown) {
-  return new Request("http://localhost/api/books/publish", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-}
-
 describe("POST /api/books/publish", () => {
-  beforeEach(() => {
-    saveSharedBook.mockReset();
-    auth.mockReset();
-  });
+  it("retires arbitrary browser-supplied publish bodies in favor of saved-book shares", async () => {
+    const response = await POST(new Request("http://localhost/api/books/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        draft: { title: "攻击者伪造的家书" },
+        body: "浏览器不能再直接公开此正文",
+        sections: [{ title: "伪造章节", body: "伪造内容" }],
+        share: { showBody: true, showSourceTitles: true, showOriginalText: true },
+      }),
+    }));
 
-  it("校验通过后存储并返回 token 与 url", async () => {
-    auth.mockResolvedValue({ user: { id: "user-1" } });
-    saveSharedBook.mockResolvedValue({ ...validPayload, token: "tok123abc", createdAt: "2026-07-01T00:00:00.000Z" });
-
-    const response = await POST(jsonRequest(validPayload));
-    const json = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(json.token).toBe("tok123abc");
-    expect(json.url).toBe("/share/tok123abc");
-    expect(saveSharedBook).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-1", draft: validPayload.draft }));
-  });
-
-  it("格式不正确时返回 400", async () => {
-    const response = await POST(jsonRequest({ foo: "bar" }));
-    expect(response.status).toBe(400);
-    expect(saveSharedBook).not.toHaveBeenCalled();
-  });
-
-  it("未登录时返回 401 而不是崩溃", async () => {
-    auth.mockResolvedValue(null);
-
-    const response = await POST(jsonRequest(validPayload));
-
-    expect(response.status).toBe(401);
-    expect(saveSharedBook).not.toHaveBeenCalled();
+    expect(response.status).toBe(410);
+    await expect(response.json()).resolves.toEqual({
+      code: "BOOK_PUBLISH_ENDPOINT_RETIRED",
+      message: "旧家书发布端点已停用，请先保存家书，再通过受保护的分享接口发布。",
+      migrationEndpoint: "/api/books/:bookId/shares",
+    });
   });
 });

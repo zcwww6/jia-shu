@@ -4,11 +4,19 @@ import type {
   MemoryExtractResponse,
   ResonanceScanResponse,
 } from "@/shared/types/galaxy";
+import {
+  isMemoryExtractResponse,
+  type ReviewableMemoryExtractResponse,
+} from "@/server/ai/schemas";
 
-export function ensureConfirmedMemory(response: MemoryExtractResponse) {
+export function ensureMemoryNeedsConfirmation(response: MemoryExtractResponse): ReviewableMemoryExtractResponse {
+  if (!isMemoryExtractResponse(response)) {
+    throw new Error("AI 记忆整理缺少可核对的不确定字段。");
+  }
+
   return {
     ...response,
-    status: "confirmed" as const,
+    status: "needs_confirmation" as const,
   };
 }
 

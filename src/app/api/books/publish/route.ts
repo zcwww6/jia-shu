@@ -1,33 +1,13 @@
-import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
-import { saveSharedBook } from "@/server/store/shared-books";
-import { isPublishBookRequest } from "@/server/ai/schemas";
+const LEGACY_PUBLISH_RETIRED_RESPONSE = {
+  code: "BOOK_PUBLISH_ENDPOINT_RETIRED",
+  message: "旧家书发布端点已停用，请先保存家书，再通过受保护的分享接口发布。",
+  migrationEndpoint: "/api/books/:bookId/shares",
+} as const;
 
 export async function POST(request: Request) {
-  const payload = await request.json();
+  void request;
 
-  if (!isPublishBookRequest(payload)) {
-    return NextResponse.json({ message: "家书发布请求格式不正确" }, { status: 400 });
-  }
-
-  const session = await auth();
-  const userId = session?.user?.id;
-
-  if (!userId) {
-    return NextResponse.json({ message: "请先登录后再发布家书" }, { status: 401 });
-  }
-
-  const stored = await saveSharedBook({
-    userId,
-    draft: payload.draft,
-    body: payload.body,
-    sections: payload.sections,
-    share: payload.share,
-  });
-
-  return NextResponse.json({
-    token: stored.token,
-    url: `/share/${stored.token}`,
-  });
+  return NextResponse.json(LEGACY_PUBLISH_RETIRED_RESPONSE, { status: 410 });
 }

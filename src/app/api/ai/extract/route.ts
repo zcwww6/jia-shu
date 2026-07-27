@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 
-import { extractMemoryWithFallback } from "@/server/ai/ai-client";
-import { ensureConfirmedMemory } from "@/server/ai/guardrails";
-import { isMemoryExtractRequest } from "@/server/ai/schemas";
+import { LEGACY_AI_ENDPOINT_DISABLED_RESPONSE } from "@/shared/legacy-ai-entry";
 
+/**
+ * This unauthenticated preview endpoint predates consent-bound AI jobs. It is
+ * deliberately retired instead of translating browser payloads into implicit
+ * jobs, because that would bypass owner scope, consent, and idempotency.
+ */
 export async function POST(request: Request) {
-  const payload = await request.json();
+  void request;
 
-  if (!isMemoryExtractRequest(payload)) {
-    return NextResponse.json({ message: "记忆提取请求格式不正确" }, { status: 400 });
-  }
-
-  const result = await extractMemoryWithFallback(payload);
-
-  return NextResponse.json(ensureConfirmedMemory(result));
+  return NextResponse.json(LEGACY_AI_ENDPOINT_DISABLED_RESPONSE, { status: 410 });
 }
