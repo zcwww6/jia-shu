@@ -74,7 +74,7 @@ export function PrivacyClientPage() {
           <div className="mt-6 flex flex-wrap gap-3">
             <Button onClick={confirmShare}>确认分享</Button>
             <Button asChild variant="secondary">
-              <Link href="/books/new">返回家书工坊</Link>
+              <Link href="/galaxy">返回家书工坊</Link>
             </Button>
           </div>
 

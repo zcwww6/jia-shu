@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 
 import {
-  bookDrafts,
   galaxyZones,
   memoryStars,
   planetLinks,
@@ -32,7 +31,6 @@ import {
 } from "@/shared/mock/galaxy-data";
 import {
   getPlanetPresentationType,
-  type BookGenerateResponse,
   type GalaxyZoneKey,
   type MemoryExtractResponse,
   type MemoryStar,
@@ -41,16 +39,6 @@ import {
   type PlanetLinkKind,
 } from "@/shared/types/galaxy";
 
-import {
-  readGalaxyBookResult,
-  writeGalaxyBookResult,
-  writeGalaxySharePayload,
-} from "@/features/demo-loop/storage";
-import {
-  generateBook,
-  publishBook,
-  useLoopApi,
-} from "./use-loop-api";
 import {
   confirmLegacyResonance,
   scanLegacyResonances,
@@ -98,13 +86,13 @@ type PanelKey =
   | "memory3"
   | "memory4"
   | "resonance"
-  | "book"
   | "privacy"
   | "lifecycle"
-  | "quickRecord"
-  | "shareConfirm";
+  | "quickRecord";
 
 type LegacyPlanetChanges = Omit<LegacyPlanetUpdate, "id" | "version">;
+
+const bookWorkshopLockMessage = "请先确认一条共鸣星轨，再进入家书工坊。";
 
 const initialView: GalaxyView = {
   panX: 0,
@@ -116,7 +104,7 @@ const initialView: GalaxyView = {
 const routeSteps: Array<{
   label: string;
   detail: string;
-  action: "planet" | PanelKey;
+  action: "planet" | "book" | PanelKey;
 }> = [
   {
     label: "靠近妈妈的星球",
@@ -420,7 +408,6 @@ export function GalaxyWorkspace({
   const [roamingPlanetId, setRoamingPlanetId] = useState<string | null>(null);
   const [selectedPlanetId, setSelectedPlanetId] = useState<string | null>(null);
   const [closingPlanetId, setClosingPlanetId] = useState<string | null>(null);
-  const [bookBeamPlanet, setBookBeamPlanet] = useState<Planet | null>(null);
   const [layerDockPinned, setLayerDockPinned] = useState(false);
   const [elderMode, setElderMode] = useState(false);
   const [immersiveMode, setImmersiveMode] = useState(true);
@@ -432,7 +419,6 @@ export function GalaxyWorkspace({
   const [selectedTheme, setSelectedTheme] = useState("家庭团圆");
   const [renamePlanetTarget, setRenamePlanetTarget] = useState<Planet | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
-  const [bookGenerated, setBookGenerated] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<GalaxyView>(initialView);
   const [isDragging, setIsDragging] = useState(false);
@@ -466,9 +452,6 @@ export function GalaxyWorkspace({
   const [resonanceError, setResonanceError] = useState<string | null>(null);
   const [resonanceDecisionMessage, setResonanceDecisionMessage] = useState<string | null>(null);
   const [confirmedResonanceSourceMemoryIds, setConfirmedResonanceSourceMemoryIds] = useState<string[] | null>(null);
-  const [bookResult, setBookResult] = useState<BookGenerateResponse | null>(
-    () => readGalaxyBookResult(),
-  );
   const [litMemories, setLitMemories] = useState<MemoryStar[]>(initialConfirmedMemories);
   const [quickRecordTargetPlanetId, setQuickRecordTargetPlanetId] = useState<string | null>(null);
   const [memoryReview, setMemoryReview] = useState<LegacyMemoryResponse | null>(null);
@@ -479,8 +462,7 @@ export function GalaxyWorkspace({
   const [memoryFlowLoading, setMemoryFlowLoading] = useState(false);
   const [memoryFlowError, setMemoryFlowError] = useState<string | null>(null);
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const loopApi = useLoopApi();
+  const hasConfirmedResonanceThisSession = confirmedResonanceSourceMemoryIds !== null;
 
   const activeZoneContent = zoneContent[activeZone];
   const visiblePlanets = useMemo(
@@ -663,7 +645,6 @@ export function GalaxyWorkspace({
     setActiveRouteStep(index);
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
-    setBookBeamPlanet(null);
 
     if (step.action === "planet") {
       focusAnchorPlanet(anchorPlanetIds.parent);
@@ -671,10 +652,14 @@ export function GalaxyWorkspace({
       return;
     }
 
+    if (step.action === "book") {
+      switchGalaxyZone("books");
+      return;
+    }
+
     setRoamingPlanetId(null);
     setActivePanel(step.action);
     if (step.action === "resonance") switchGalaxyZone("resonance", { panel: "resonance" });
-    if (step.action === "book") switchGalaxyZone("books", { panel: "book" });
   }
 
   function openPanel(key: PanelKey) {
@@ -715,7 +700,6 @@ export function GalaxyWorkspace({
     setRoamingPlanetId(null);
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
-    setBookBeamPlanet(null);
   }
 
   function openConfirmedMemory(memoryId: string) {
@@ -725,7 +709,6 @@ export function GalaxyWorkspace({
     setRoamingPlanetId(null);
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
-    setBookBeamPlanet(null);
   }
 
   function closeActivePanel() {
@@ -737,6 +720,11 @@ export function GalaxyWorkspace({
     zone: GalaxyZoneKey,
     options: { panel?: PanelKey | null; preserveSelectedPlanet?: boolean } = {},
   ) {
+    if (zone === "books" && !hasConfirmedResonanceThisSession) {
+      setToast(bookWorkshopLockMessage);
+      return false;
+    }
+
     cancelMemoryFlowOperation();
     setActiveZone(zone);
     setActivePanel(options.panel ?? null);
@@ -745,7 +733,7 @@ export function GalaxyWorkspace({
       setSelectedPlanetId(null);
       setClosingPlanetId(null);
     }
-    setBookBeamPlanet(null);
+    return true;
   }
 
   function goToZone(zone: GalaxyZoneKey) {
@@ -753,8 +741,8 @@ export function GalaxyWorkspace({
   }
 
   function selectThemeFromNebula(theme: string) {
+    if (!switchGalaxyZone("books")) return;
     setSelectedTheme(theme);
-    switchGalaxyZone("books");
     setToast(`已带入「${theme}」`);
   }
 
@@ -953,7 +941,6 @@ export function GalaxyWorkspace({
     setResonanceLoading(true);
     setResonanceError(null);
     setResonanceDecisionMessage(null);
-    setConfirmedResonanceSourceMemoryIds(null);
     try {
       const result = await scanLegacyResonances(sourceMemory.id);
       const candidates = result.candidates.filter((candidate) => candidate.status === "candidate");
@@ -1063,60 +1050,6 @@ export function GalaxyWorkspace({
     }
   }
 
-  async function generateBookDraft() {
-    if (!confirmedResonanceSourceMemoryIds) {
-      setToast("请先确认一条共鸣星轨，再进入家书工坊。");
-      return false;
-    }
-    // 乐观反馈：先标记已生成，再用真实响应丰富内容（失败时回落静态草稿）。
-    setBookGenerated(true);
-    const sourceMemoryIds = confirmedResonanceSourceMemoryIds;
-    const result = await loopApi.run(() =>
-      generateBook({
-        sourceMemoryIds,
-        sourceRange: "binary_system",
-        themeTemplateKey: "family_reunion",
-      }),
-    );
-    if (!result) {
-      setToast(loopApi.error ?? "家书生成失败，请稍后重试");
-      return false;
-    }
-    setBookResult(result);
-    writeGalaxyBookResult(result);
-    return true;
-  }
-
-  async function confirmShare() {
-    const share = {
-      showBody: true,
-      showSourceTitles: true,
-      showOriginalText: false,
-    };
-    writeGalaxySharePayload(share);
-
-    // 没有已生成的家书时，仅确认分享范围（演示降级路径），不发布链接。
-    if (!bookResult) {
-      setToast("分享范围已确认");
-      return;
-    }
-
-    const published = await loopApi.run(() =>
-      publishBook({
-        draft: bookResult.draft,
-        body: bookResult.body,
-        sections: bookResult.sections,
-        share,
-      }),
-    );
-    if (!published) {
-      setToast(loopApi.error ?? "家书发布失败，请稍后重试");
-      return;
-    }
-    setShareUrl(published.url);
-    setToast("分享链接已生成，可复制打开");
-  }
-
   function selectPlanet(planetId: string) {
     if (hiddenPlanetIds.includes(planetId)) return;
     cancelMemoryFlowOperation();
@@ -1126,7 +1059,6 @@ export function GalaxyWorkspace({
       setSelectedPlanetId(null);
       setActivePanel(null);
       setRoamingPlanetId(null);
-      setBookBeamPlanet(null);
       window.setTimeout(() => {
         setClosingPlanetId((current) => (current === planetId ? null : current));
       }, 1320);
@@ -1138,7 +1070,6 @@ export function GalaxyWorkspace({
     setSelectedPlanetId(planetId);
     setActivePanel(null);
     setRoamingPlanetId(null);
-    setBookBeamPlanet(null);
   }
 
   function openSelectedPlanet(planetId: string | null) {
@@ -1198,13 +1129,8 @@ export function GalaxyWorkspace({
   }
 
   function generateBookFromPlanet(planet: Planet) {
-    cancelMemoryFlowOperation();
-    setSelectedPlanetId(planet.id);
-    setClosingPlanetId(null);
-    setActivePanel(null);
-    setRoamingPlanetId(null);
-    setBookBeamPlanet(planet);
-    setToast(`已选中「${planet.name}」的记忆星`);
+    if (!switchGalaxyZone("books")) return;
+    setToast(`已从「${planet.name}」进入家书工坊`);
   }
 
   function renamePlanet(planet: Planet) {
@@ -1327,7 +1253,6 @@ export function GalaxyWorkspace({
       setSelectedPlanetId(null);
       setClosingPlanetId(null);
       setRoamingPlanetId((current) => (current === planetId ? null : current));
-      setBookBeamPlanet((current) => (current?.id === planetId ? null : current));
       setToast(`已归档「${planet.name}」，可在星图编辑中恢复`);
     } catch (error) {
       setToast(error instanceof Error ? error.message : "归档星球失败，请稍后重试");
@@ -1453,7 +1378,6 @@ export function GalaxyWorkspace({
     cancelMemoryFlowOperation();
     setActivePanel(null);
     setRoamingPlanetId(null);
-    setBookBeamPlanet(null);
     setToast("自动巡航已启动，星球开始沿轨道漫游");
   }
 
@@ -1461,7 +1385,6 @@ export function GalaxyWorkspace({
     setAutoCruise(false);
     setImmersiveMode(false);
     setRoamingPlanetId(null);
-    setBookBeamPlanet(null);
   }
 
   return (
@@ -1641,8 +1564,6 @@ export function GalaxyWorkspace({
           <div className="galaxy-canvas" style={galaxyStyle}>
             <ZoneScene
               activeZone={activeZone}
-              bookGenerated={bookGenerated}
-              bookResult={bookResult}
               resonanceCandidate={activeResonance}
               resonanceSourceMemory={resonanceSourceMemory}
               resonanceTargetMemory={resonanceTargetMemory}
@@ -1650,9 +1571,6 @@ export function GalaxyWorkspace({
               resonanceTargetPlanet={resonanceTargetPlanet}
               litMemories={litMemories}
               anchorPlanetIds={anchorPlanetIds}
-              onGenerateBook={() => {
-                void generateBookDraft();
-              }}
               onGo={goToZone}
               onOpenConfirmedMemory={openConfirmedMemory}
               onOpenPanel={openPanel}
@@ -1727,9 +1645,8 @@ export function GalaxyWorkspace({
         <SidePanel
           activePanel={activePanel}
           extractResult={extractResult}
-          bookResult={bookResult}
           quickRecordContent={quickRecordContent}
-          loading={loopApi.loading || memoryFlowLoading}
+          loading={memoryFlowLoading}
           memoryFlowError={memoryFlowError}
           memoryPrimaryActionLabel={memoryPrimaryActionLabel}
           memoryReview={memoryReview}
@@ -1759,10 +1676,6 @@ export function GalaxyWorkspace({
           onScanResonance={scanResonanceStar}
           onDecideResonance={decideResonanceCandidate}
           onPersistPlanetChange={persistPlanetChange}
-          onConfirmShare={() => {
-            void confirmShare();
-          }}
-          shareUrl={shareUrl}
           onOpenPanel={openPanel}
           onSelectTheme={selectThemeFromNebula}
           onToast={setToast}
@@ -1784,28 +1697,13 @@ export function GalaxyWorkspace({
         <PlanetRoamingOverlay
           planet={roamingPlanet}
           onBook={() => {
-            setRoamingPlanetId(null);
-            goToZone("books");
+            if (!switchGalaxyZone("books")) return;
             setToast("已从星球漫游带入家书工坊");
           }}
           onClose={() => setRoamingPlanetId(null)}
           onQuickRecord={() => {
             setRoamingPlanetId(null);
             openPanel("quickRecord");
-          }}
-        />
-      ) : null}
-      {bookBeamPlanet ? (
-        <BookBeamOverlay
-          planet={bookBeamPlanet}
-          onClose={() => setBookBeamPlanet(null)}
-          onPreview={() => {
-            setBookBeamPlanet(null);
-            goToZone("books");
-          }}
-          onShareConfirm={() => {
-            setBookBeamPlanet(null);
-            setActivePanel("shareConfirm");
           }}
         />
       ) : null}
@@ -1842,8 +1740,6 @@ export function GalaxyWorkspace({
 function ZoneScene({
   activeZone,
   anchorPlanetIds,
-  bookGenerated,
-  bookResult,
   resonanceCandidate,
   resonanceSourceMemory,
   resonanceTargetMemory,
@@ -1851,7 +1747,6 @@ function ZoneScene({
   resonanceTargetPlanet,
   litMemories,
   closingPlanetId,
-  onGenerateBook,
   onGo,
   onOpenConfirmedMemory,
   onOpenPanel,
@@ -1886,8 +1781,6 @@ function ZoneScene({
     memorial: string | null;
     public: string | null;
   };
-  bookGenerated: boolean;
-  bookResult: BookGenerateResponse | null;
   resonanceCandidate: LegacyPendingResonance | null;
   resonanceSourceMemory: MemoryStar | null;
   resonanceTargetMemory: MemoryStar | null;
@@ -1895,7 +1788,6 @@ function ZoneScene({
   resonanceTargetPlanet: Planet | null;
   litMemories: MemoryStar[];
   closingPlanetId: string | null;
-  onGenerateBook: () => void;
   onGo: (zone: GalaxyZoneKey) => void;
   onOpenConfirmedMemory: (memoryId: string) => void;
   onOpenPanel: (key: PanelKey) => void;
@@ -2220,53 +2112,16 @@ function ZoneScene({
   }
 
   if (activeZone === "books") {
-    const bookTitle = bookResult?.draft.title ?? bookDrafts[0].title;
-    const bookIntro = bookResult?.draft.intro ?? bookDrafts[0].intro;
-    const bookSourceIds = bookResult?.draft.sourceMemoryIds ?? bookDrafts[0].sourceMemoryIds;
     return (
       <div className="bookmaker-stage">
         <section className="book-workbench">
           <p className="panel-kicker">家书工坊</p>
-          <h2>把星系里的光，整理成一页可以分享的家书</h2>
-          <p>当前主题：{selectedTheme}。来源范围支持单星球、双星系、家庭星系和纪念星。</p>
-          <div className="source-pair">
-            <div className="source-card">
-              <strong>来源范围</strong>
-              <p>妈妈的星球 + 我的星球 · 2018 除夕共鸣星轨</p>
-            </div>
-            <div className="source-card">
-              <strong>保留 sourceMemoryIds</strong>
-              <p>{bookSourceIds.join(" / ")}</p>
-            </div>
-          </div>
-          <div className="book-actions">
-            <button className="primary" onClick={onGenerateBook} type="button">
-              生成家书草稿
-            </button>
-            <button className="secondary" onClick={() => onOpenPanel("shareConfirm")} type="button">
-              分享前确认
-            </button>
-          </div>
+          <h2>家书工坊已准备好，下一步将从真实来源创建</h2>
+          <p>当前主题：{selectedTheme}。本会话已确认一条真实共鸣星轨；家书生成与分享将在下一步接入真实来源。</p>
         </section>
-        <article className="book-preview">
-          <p>{bookGenerated || bookResult ? "家书草稿已生成" : "等待生成"}</p>
-          <h3>{bookTitle}</h3>
-          <span>{bookIntro}</span>
-          {bookResult ? (
-            <div className="book-sections">
-              {bookResult.sections.map((section) => (
-                <div className="book-section" key={section.title}>
-                  <strong>{section.title}</strong>
-                  <p>{section.body}</p>
-                  <span className="book-source">来源：{section.sourceMemoryIds.join(" / ")}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </article>
         <SceneHint
-          subtitle="只基于已确认记忆生成；公开分享前必须确认范围"
-          title="家书是一次漫游后的成果物"
+          subtitle="只基于本会话已确认的共鸣星轨；尚未生成、展示或分享任何家书内容"
+          title="真实来源准备好后，才会创建家书"
         />
       </div>
     );
@@ -2881,7 +2736,6 @@ function ViewControls({
 function SidePanel({
   activePanel,
   extractResult,
-  bookResult,
   quickRecordContent,
   loading,
   memoryFlowError,
@@ -2898,7 +2752,6 @@ function SidePanel({
   resonanceError,
   resonanceDecisionMessage,
   resonanceLoading,
-  shareUrl,
   onClose,
   onGo,
   onLightMemory,
@@ -2910,7 +2763,6 @@ function SidePanel({
   onScanResonance,
   onDecideResonance,
   onPersistPlanetChange,
-  onConfirmShare,
   onOpenPanel,
   onSelectTheme,
   onToast,
@@ -2918,7 +2770,6 @@ function SidePanel({
 }: {
   activePanel: PanelKey | null;
   extractResult: MemoryExtractResponse | null;
-  bookResult: BookGenerateResponse | null;
   quickRecordContent: string;
   loading: boolean;
   memoryFlowError: string | null;
@@ -2935,7 +2786,6 @@ function SidePanel({
   resonanceError: string | null;
   resonanceDecisionMessage: string | null;
   resonanceLoading: boolean;
-  shareUrl: string | null;
   onClose: () => void;
   onGo: (zone: GalaxyZoneKey) => void;
   onLightMemory: () => void;
@@ -2947,22 +2797,17 @@ function SidePanel({
   onScanResonance: () => Promise<boolean>;
   onDecideResonance: (status: "confirmed" | "rejected") => Promise<boolean>;
   onPersistPlanetChange: (planet: Planet, changes: LegacyPlanetChanges) => Promise<boolean>;
-  onConfirmShare: () => void;
   onOpenPanel: (key: PanelKey) => void;
   onSelectTheme: (theme: string) => void;
   onToast: (message: string) => void;
   selectedPlanet: Planet | null;
 }) {
   const mockMemory = extractResult?.memory ?? memoryStars[0];
-  const book = bookResult?.draft ?? bookDrafts[0];
   const memoryKey = activePanel as MemoryPanelKey;
 
   if (!activePanel) return null;
 
-  const sharedProps =
-    activePanel === "shareConfirm"
-      ? { role: "dialog", "aria-label": "分享前确认", "aria-modal": true }
-      : { role: "complementary", "aria-label": "星图详情" };
+  const sharedProps = { role: "complementary", "aria-label": "星图详情" };
 
   return (
     <motion.aside
@@ -3163,24 +3008,6 @@ function SidePanel({
         )
       ) : null}
 
-      {activePanel === "book" ? (
-        <>
-          <h2>{book.title}</h2>
-          <div className="tags">
-            <span className="tag">双星系来源</span>
-            <span className="tag">家庭团圆</span>
-          </div>
-          <p>{book.intro}</p>
-          <div className="book-dock">
-            <BookOpen size={18} />
-            <strong>{book.chapters[0]?.title}</strong>
-            <button className="mini-action" onClick={() => onGo("books")} type="button">
-              进入家书工坊
-            </button>
-          </div>
-        </>
-      ) : null}
-
       {activePanel === "privacy" ? (
         <>
           <h2>隐私星域</h2>
@@ -3325,66 +3152,6 @@ function SidePanel({
         </>
       ) : null}
 
-      {activePanel === "shareConfirm" ? (
-        <>
-          <h2>分享前确认</h2>
-          <div className="tags">
-            <span className="tag private">不会公开整颗星球</span>
-            <span className="tag">可撤回</span>
-          </div>
-          <p>
-            将分享《{book.title}》这一页家书。家人只能看到已选章节和来源说明，看不到其它私密记忆。
-          </p>
-          <div className="toggle-row">
-            <span>展示家书正文</span>
-            <i className="switch on" />
-          </div>
-          <div className="toggle-row">
-            <span>展示来源记忆标题</span>
-            <i className="switch on" />
-          </div>
-          <div className="toggle-row">
-            <span>展示原始全文</span>
-            <i className="switch" />
-          </div>
-          <div className="big-actions">
-            <button className="primary" disabled={loading} onClick={onConfirmShare} type="button">
-              {loading ? "生成链接中…" : "确认分享"}
-            </button>
-            <button className="secondary" onClick={onClose} type="button">
-              再检查一下
-            </button>
-          </div>
-          {shareUrl ? (
-            <div className="ai-card share-link-card">
-              <strong>分享链接已生成</strong>
-              <p className="share-link-url">{shareUrl}</p>
-              <div className="big-actions">
-                <a
-                  className="primary"
-                  href={shareUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  在新标签页打开
-                </a>
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    void navigator.clipboard?.writeText(
-                      `${window.location.origin}${shareUrl}`,
-                    );
-                    onToast("链接已复制");
-                  }}
-                  type="button"
-                >
-                  复制链接
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </>
-      ) : null}
     </motion.aside>
   );
 }
@@ -3676,62 +3443,6 @@ function RenamePlanetDialog({
         <button className="secondary" onClick={onCancel} type="button">
           取消
         </button>
-      </div>
-    </motion.section>
-  );
-}
-
-function BookBeamOverlay({
-  planet,
-  onClose,
-  onPreview,
-  onShareConfirm,
-}: {
-  planet: Planet;
-  onClose: () => void;
-  onPreview: () => void;
-  onShareConfirm: () => void;
-}) {
-  const memories = memoryStars.filter((memory) => memory.planetId === planet.id).slice(0, 3);
-
-  return (
-    <motion.section
-      animate={{ opacity: 1, scale: 1 }}
-      aria-label="家书光束"
-      aria-modal="true"
-      className="book-beam-overlay"
-      exit={{ opacity: 0, scale: 0.98 }}
-      initial={{ opacity: 0, scale: 0.98 }}
-      role="dialog"
-      transition={{ duration: 0.28, ease: [0.2, 0.8, 0.2, 1] }}
-    >
-      <button aria-label="关闭家书光束" className="beam-close" onClick={onClose} type="button">
-        <X size={16} />
-      </button>
-      <div className="beam-core">
-        <i />
-        <span />
-        <b />
-      </div>
-      <div className="beam-copy">
-        <p className="panel-kicker">家书光束</p>
-        <h2>记忆星正在收束成一页家书</h2>
-        <p>
-          已从「{planet.name}」选中可写入的记忆星。这里先以光束预览承接生成动作，后续再接真实 AI 和来源确认。
-        </p>
-        <div className="beam-memory-row">
-          {(memories.length ? memories : memoryStars.slice(0, 3)).map((memory) => (
-            <span key={memory.id}>{memory.title}</span>
-          ))}
-        </div>
-        <div className="big-actions">
-          <button className="primary" onClick={onPreview} type="button">
-            展开家书预览
-          </button>
-          <button className="secondary" onClick={onShareConfirm} type="button">
-            分享前确认
-          </button>
-        </div>
       </div>
     </motion.section>
   );

@@ -18,12 +18,12 @@ const steps = [
   {
     label: "沿共鸣星轨前进",
     detail: "确认两颗星球是否记住了同一天",
-    href: "/resonance",
+    href: "/galaxy",
   },
   {
     label: "写成一页家书",
     detail: "只基于已确认记忆，分享前再次确认",
-    href: "/books/new",
+    href: "/galaxy",
   },
 ];
 
@@ -43,7 +43,7 @@ export function RouteGuide() {
         {steps.map((step, index) => (
           <Link
             href={step.href}
-            key={step.href}
+            key={step.label}
             className="group grid grid-cols-[2.25rem_1fr] gap-3 rounded-md border border-white/10 bg-white/[0.04] p-3 transition hover:bg-white/[0.08]"
           >
             <span className="flex size-9 items-center justify-center rounded-md bg-white/10 text-sm font-bold text-amber-100">
@@ -58,13 +58,13 @@ export function RouteGuide() {
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
         <Button asChild size="sm">
-          <Link href="/resonance">
+          <Link href="/galaxy">
             <GitBranch size={15} />
             共鸣星轨
           </Link>
         </Button>
         <Button asChild size="sm" variant="secondary">
-          <Link href="/books/new">
+          <Link href="/galaxy">
             <BookOpen size={15} />
             家书工坊
           </Link>

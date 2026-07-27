@@ -56,7 +56,7 @@ export function ResonanceClientPage() {
   function handleConfirm() {
     if (!result) return;
     writeResonanceResult(result);
-    router.push("/books/new");
+    router.push("/galaxy");
   }
 
   return (

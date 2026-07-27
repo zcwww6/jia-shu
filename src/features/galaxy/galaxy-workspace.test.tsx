@@ -443,7 +443,7 @@ describe("GalaxyWorkspace", () => {
     });
   });
 
-  it("routes planet object actions into theme, privacy, lifecycle, and book flows", () => {
+  it("routes planet object actions into theme, privacy, lifecycle, and the guarded book flow", () => {
     renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
@@ -465,8 +465,8 @@ describe("GalaxyWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
     fireEvent.click(screen.getByRole("button", { name: "一键生成家书" }));
-    expect(screen.getByRole("dialog", { name: "家书光束" })).toBeInTheDocument();
-    expect(screen.getByText("记忆星正在收束成一页家书")).toBeInTheDocument();
+    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "家书光束" })).not.toBeInTheDocument();
   });
 
   it("opens a story scene from a planet surface memory node", () => {
@@ -493,7 +493,7 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getAllByText("公开分享轨道").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders each v7.3 chapter as a distinct interactive scene", () => {
+  it("renders each v7.3 chapter while keeping the book chapter guarded", () => {
     renderDemoGalaxy();
 
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-galaxy");
@@ -527,23 +527,23 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByText("选择一种主题，就像进入一片新的星云")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "旅行星云" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "旅行星云" }));
-    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-bookmaker", "nebula-travel");
+    expect(screen.getByTestId("galaxy-app")).not.toHaveClass("scene-bookmaker");
+    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-bookmaker");
-    expect(screen.getByText("把星系里的光，整理成一页可以分享的家书")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "生成家书草稿" })).toBeInTheDocument();
+    expect(screen.getByTestId("galaxy-app")).not.toHaveClass("scene-bookmaker");
+    expect(screen.queryByRole("button", { name: "生成家书草稿" })).not.toBeInTheDocument();
   });
 
-  it("does not treat a static resonance scene as a source for the book workflow", () => {
+  it("does not let a static resonance scene enter the book workflow", () => {
     renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: "生成家书草稿" }));
 
     expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
-    expect(screen.getByText("等待生成")).toBeInTheDocument();
+    expect(screen.getByTestId("galaxy-app")).not.toHaveClass("scene-bookmaker");
+    expect(screen.queryByText("我们家的第一个新房除夕")).not.toBeInTheDocument();
   });
 
   it("opens the planet roaming overlay from the recommended route", () => {
@@ -569,8 +569,8 @@ describe("GalaxyWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始靠近" }));
     fireEvent.click(screen.getByRole("button", { name: "星球漫游写成家书" }));
 
-    expect(screen.queryByRole("dialog", { name: "妈妈的星球漫游" })).not.toBeInTheDocument();
-    expect(screen.getByText("把星系里的光，整理成一页可以分享的家书")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "妈妈的星球漫游" })).toBeInTheDocument();
+    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
   });
 
   it("auto cruise is the default galaxy mode without entering a planet route", () => {
@@ -585,17 +585,15 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByTestId("galaxy-app")).not.toHaveClass("auto-cruise-active");
   });
 
-  it("supports elder mode and share confirmation", () => {
+  it("supports elder mode without exposing share confirmation before resonance confirmation", () => {
     renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "长辈大字模式" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("elder");
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: "分享前确认" }));
-
-    expect(screen.getByRole("dialog", { name: "分享前确认" })).toBeInTheDocument();
-    expect(screen.getByText("不会公开整颗星球")).toBeInTheDocument();
+    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "分享前确认" })).not.toBeInTheDocument();
   });
 
   it("keeps secondary prototype controls interactive with visible feedback", () => {
@@ -616,8 +614,7 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByText("语音入口已准备")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: "分享前确认" }));
-    fireEvent.click(screen.getByRole("button", { name: "确认分享" }));
-    expect(screen.getByText("分享范围已确认")).toBeInTheDocument();
+    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "确认分享" })).not.toBeInTheDocument();
   });
 });

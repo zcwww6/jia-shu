@@ -1,5 +1,5 @@
-import { BookNewClientPage } from "@/features/demo-loop/book-new-client-page";
+import { redirect } from "next/navigation";
 
 export default function NewBookPage() {
-  return <BookNewClientPage />;
+  redirect("/galaxy");
 }

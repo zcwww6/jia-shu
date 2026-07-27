@@ -11,5 +11,6 @@ describe("PlanetExplorer", () => {
     expect(screen.getByText("新家除夕")).toBeInTheDocument();
     expect(screen.getByText("点亮记忆星")).toBeInTheDocument();
     expect(screen.getByText("写成家书")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "写成家书" })).toHaveAttribute("href", "/galaxy");
   });
 });

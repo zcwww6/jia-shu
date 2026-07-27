@@ -1,5 +1,5 @@
-import { ResonanceClientPage } from "@/features/demo-loop/resonance-client-page";
+import { redirect } from "next/navigation";
 
 export default function ResonancePage() {
-  return <ResonanceClientPage />;
+  redirect("/galaxy");
 }

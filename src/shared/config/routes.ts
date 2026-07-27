@@ -22,8 +22,8 @@ export const appRoutes: AppRoute[] = [
   },
   {
     label: "共鸣星轨",
-    href: "/resonance",
-    description: "查看 AI 点亮的共同记忆候选。",
+    href: "/galaxy",
+    description: "在家庭星系中查看并确认共鸣候选。",
   },
   {
     label: "主题星云",
@@ -32,7 +32,7 @@ export const appRoutes: AppRoute[] = [
   },
   {
     label: "家书工坊",
-    href: "/books/new",
-    description: "生成一页有来源的家书。",
+    href: "/galaxy",
+    description: "在家庭星系中从已确认的共鸣星轨创建家书。",
   },
 ];

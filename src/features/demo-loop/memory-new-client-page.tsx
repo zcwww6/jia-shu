@@ -58,7 +58,7 @@ export function MemoryNewClientPage() {
   function handleConfirm() {
     if (!result) return;
     writeExtractResult(result);
-    router.push("/resonance");
+    router.push("/galaxy");
   }
 
   return (

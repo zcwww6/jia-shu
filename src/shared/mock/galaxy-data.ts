@@ -42,7 +42,7 @@ export const galaxyZones: GalaxyZone[] = [
   {
     key: "resonance",
     label: "共鸣星轨",
-    href: "/resonance",
+    href: "/galaxy",
     description: "共同记忆候选、来源对比和匹配理由。",
   },
   {
@@ -54,7 +54,7 @@ export const galaxyZones: GalaxyZone[] = [
   {
     key: "books",
     label: "家书工坊",
-    href: "/books/new",
+    href: "/galaxy",
     description: "选择来源范围并生成一页家书。",
   },
 ];

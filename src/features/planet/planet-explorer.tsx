@@ -47,7 +47,7 @@ export function PlanetExplorer({ planetId }: { planetId: string }) {
                 </Link>
               </Button>
               <Button asChild variant="secondary">
-                <Link href="/books/new">
+                <Link href="/galaxy">
                   <BookOpen size={16} />
                   写成家书
                 </Link>

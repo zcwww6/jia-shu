@@ -94,7 +94,7 @@ export function BookNewClientPage() {
                 {isSubmitting ? "生成中…" : "生成家书草稿"}
               </Button>
               <Button asChild variant="secondary">
-                <Link href="/resonance">返回共鸣星轨</Link>
+                <Link href="/galaxy">返回共鸣星轨</Link>
               </Button>
             </div>
             {error ? <p className="text-rose-300">{error}</p> : null}

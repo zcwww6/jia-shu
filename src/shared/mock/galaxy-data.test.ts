@@ -23,6 +23,11 @@ describe("galaxy mock data", () => {
     ]);
   });
 
+  it("routes the legacy resonance and book zones into the guarded galaxy workspace", () => {
+    expect(galaxyZones.find((zone) => zone.key === "resonance")?.href).toBe("/galaxy");
+    expect(galaxyZones.find((zone) => zone.key === "books")?.href).toBe("/galaxy");
+  });
+
   it("contains a complete mock demo path from planet to book draft", () => {
     const mom = planets.find((planet) => planet.id === "mock-mom");
     const momStories = storyNodes.filter((node) => node.planetId === "mock-mom");
