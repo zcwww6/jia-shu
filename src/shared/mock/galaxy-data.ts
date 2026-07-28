@@ -1,10 +1,8 @@
 import type {
-  BookDraft,
   GalaxyZone,
   MemoryStar,
   Planet,
   PlanetLink,
-  ResonanceTrack,
   StoryNode,
 } from "@/shared/types/galaxy";
 
@@ -58,7 +56,6 @@ export const galaxyZones: GalaxyZone[] = [
     description: "选择来源范围并生成一页家书。",
   },
 ];
-
 export const planets: Planet[] = [
   {
     id: "mock-me",
@@ -298,75 +295,5 @@ export const storyNodes: StoryNode[] = [
     title: "云南阳光",
     summary: "退休后最放松的一次旅行，她记得阳光。",
     sourceLabel: "可进入：旅行星云",
-  },
-];
-
-export const resonanceTracks: ResonanceTrack[] = [
-  {
-    id: "resonance-2018-reunion",
-    title: "2018 除夕共鸣星轨",
-    sourceMemoryIds: ["memory-2018-mom", "memory-2018-me"],
-    score: 0.91,
-    status: "candidate",
-    reason: "时间、地点、人物和语义高度匹配，适合带入家书工坊。",
-  },
-  {
-    id: "resonance-2008-kitchen",
-    title: "外婆菜谱传承共鸣",
-    sourceMemoryIds: ["memory-2008-grandma", "memory-2008-mom-kitchen"],
-    score: 0.89,
-    status: "candidate",
-    reason: "同一晚的厨房记忆在两颗星球中形成了明确传承关系，适合生成纪念与传承页。",
-  },
-  {
-    id: "resonance-2022-child-stage",
-    title: "成长舞台共鸣候选",
-    sourceMemoryIds: ["memory-2022-child", "memory-2022-me-child"],
-    score: 0.86,
-    status: "candidate",
-    reason: "同一成长瞬间被孩子与家长分别记住，适合生成亲子成长页。",
-  },
-];
-
-export const bookDrafts: BookDraft[] = [
-  {
-    id: "book-2018-reunion",
-    title: "我们家的第一个新房除夕",
-    sourceRange: "binary_system",
-    themeTemplateKey: "family_reunion",
-    sourceMemoryIds: ["memory-2018-mom", "memory-2018-me"],
-    intro: "这页家书从妈妈和我的星球中选取已确认记忆，讲述同一个家庭时刻在不同人心里留下的光。",
-    chapters: [
-      {
-        title: "两颗星球记住同一天",
-        sourceMemoryIds: ["memory-2018-mom", "memory-2018-me"],
-      },
-      {
-        title: "妈妈的视角",
-        sourceMemoryIds: ["memory-2018-mom"],
-      },
-      {
-        title: "我的视角",
-        sourceMemoryIds: ["memory-2018-me"],
-      },
-    ],
-  },
-  {
-    id: "book-2008-inheritance",
-    title: "外婆留在厨房里的光",
-    sourceRange: "memorial",
-    themeTemplateKey: "parent_story",
-    sourceMemoryIds: ["memory-2008-grandma", "memory-2008-mom-kitchen"],
-    intro: "这页家书不只写一道菜谱，而是写一代人如何把家的味道和做法留给下一代。",
-    chapters: [
-      {
-        title: "那晚的老家厨房",
-        sourceMemoryIds: ["memory-2008-grandma", "memory-2008-mom-kitchen"],
-      },
-      {
-        title: "外婆如何教，妈妈如何记住",
-        sourceMemoryIds: ["memory-2008-mom-kitchen"],
-      },
-    ],
   },
 ];
