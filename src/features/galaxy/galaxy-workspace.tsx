@@ -2764,6 +2764,7 @@ function ZoneScene({
                 可见范围
                 <select
                   aria-label="家书可见范围"
+                  className="panel-select"
                   onChange={(event) => setBookVisibility(event.target.value as LegacyBookVisibility)}
                   value={bookVisibility}
                 >
@@ -3790,7 +3791,7 @@ function SidePanel({
                 选择记忆来源
                 <select
                   aria-label="选择记忆来源"
-                  className="panel-input"
+                  className="panel-select"
                   onChange={(event) => onQuickRecordSourceChange(event.target.value as QuickRecordSource)}
                   value={quickRecordSource}
                 >
@@ -3868,7 +3869,7 @@ function ScopePanel({
     public: "公开可见（不创建链接）",
   };
   const visibilityControls = planet ? (
-    <div className="big-actions">
+    <section aria-label="星球可见范围" className="scope-visibility-actions">
       <p>当前可见范围：{visibilityLabel[planet.visibility]}</p>
       <p>这里保存的是星球的可见范围，不会生成外部访问链接；需要公开时，请在家书工坊创建可撤回链接。</p>
       <button className="secondary" onClick={() => onSaveVisibility("private")} type="button">
@@ -3880,7 +3881,7 @@ function ScopePanel({
       <button className="secondary" onClick={() => onSaveVisibility("public")} type="button">
         设为公开可见
       </button>
-    </div>
+    </section>
   ) : null;
 
   if (activePanel === "scopePrivate") {

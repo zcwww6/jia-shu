@@ -232,6 +232,23 @@ describe("GalaxyWorkspace", () => {
     });
   });
 
+  it("uses a readable visibility action group and styled memory source select", () => {
+    renderDemoGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "隐私星域" }));
+    fireEvent.click(screen.getByRole("button", { name: "妈妈的星球" }));
+
+    expect(screen.getByText("当前可见范围：家庭可见").closest(".scope-visibility-actions")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "设为私密核心" }).closest(".scope-visibility-actions")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "设为公开可见" }).closest(".scope-visibility-actions")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
+    fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+
+    expect(screen.getByLabelText("选择记忆来源")).toHaveClass("panel-select");
+  });
+
   it("persists all selected planet settings from the server response and carries its version forward", async () => {
     const responses = [
       {

@@ -2053,7 +2053,8 @@ body {
   }
 
   .panel-input,
-  .panel-textarea {
+  .panel-textarea,
+  .panel-select {
     width: 100%;
     padding: 13px 14px;
     margin: 10px 0;
@@ -2063,9 +2064,42 @@ body {
     border-radius: 15px;
   }
 
+  .panel-select {
+    color-scheme: dark;
+    cursor: pointer;
+  }
+
+  .panel-select:focus-visible {
+    outline: 2px solid rgba(242, 206, 137, 0.84);
+    outline-offset: 2px;
+    border-color: rgba(242, 206, 137, 0.5);
+  }
+
+  .panel-select option {
+    color: #fff4df;
+    background: #2a2227;
+  }
+
   .panel-textarea {
     min-height: 128px;
     resize: vertical;
+  }
+
+  .scope-visibility-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .scope-visibility-actions p {
+    grid-column: 1 / -1;
+    margin: 0;
+    min-width: 0;
+  }
+
+  .scope-visibility-actions button:last-child {
+    grid-column: 1 / -1;
   }
 
   .book-dock {
