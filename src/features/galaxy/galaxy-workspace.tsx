@@ -588,6 +588,7 @@ export function GalaxyWorkspace({
   );
 
   const activeZoneContent = zoneContent[activeZone];
+  const isGalaxyScene = activeZone === "galaxy";
   const visiblePlanets = useMemo(
     () => galaxyPlanets.filter((planet) => !hiddenPlanetIds.includes(planet.id)),
     [galaxyPlanets, hiddenPlanetIds],
@@ -1234,6 +1235,10 @@ export function GalaxyWorkspace({
 
     cancelMemoryFlowOperation();
     cancelResonanceScanOperation();
+    if (zone !== "galaxy") {
+      setAutoCruise(false);
+      setImmersiveMode(false);
+    }
     setActiveZone(zone);
     setActivePanel(options.panel ?? null);
     setRoamingPlanetId(null);
@@ -2015,39 +2020,43 @@ export function GalaxyWorkspace({
           ))}
         </nav>
 
-        <div className="legend">
-          <h3>对象权限层</h3>
-          <div className="legend-row">
-            <i className="dot private-dot" />
-            私密核心
-          </div>
-          <div className="legend-row">
-            <i className="dot family-dot" />
-            家庭可见
-          </div>
-          <div className="legend-row">
-            <i className="dot public-dot" />
-            公开分享
-          </div>
-          <div className="legend-row">
-            <i className="dot memorial-dot" />
-            纪念星
-          </div>
-        </div>
-        <div className="layer-tools">
-          <button
-            className={`layer-tool ${elderMode ? "active" : ""}`}
-            onClick={() => setElderMode((current) => !current)}
-            type="button"
-          >
-            <Type size={15} />
-            长辈大字模式
-          </button>
-          <button className="layer-tool" onClick={() => setRouteCollapsed((current) => !current)} type="button">
-            <Sparkles size={15} />
-            推荐航线
-          </button>
-        </div>
+        {isGalaxyScene ? (
+          <>
+            <div className="legend">
+              <h3>对象权限层</h3>
+              <div className="legend-row">
+                <i className="dot private-dot" />
+                私密核心
+              </div>
+              <div className="legend-row">
+                <i className="dot family-dot" />
+                家庭可见
+              </div>
+              <div className="legend-row">
+                <i className="dot public-dot" />
+                公开分享
+              </div>
+              <div className="legend-row">
+                <i className="dot memorial-dot" />
+                纪念星
+              </div>
+            </div>
+            <div className="layer-tools">
+              <button
+                className={`layer-tool ${elderMode ? "active" : ""}`}
+                onClick={() => setElderMode((current) => !current)}
+                type="button"
+              >
+                <Type size={15} />
+                长辈大字模式
+              </button>
+              <button className="layer-tool" onClick={() => setRouteCollapsed((current) => !current)} type="button">
+                <Sparkles size={15} />
+                推荐航线
+              </button>
+            </div>
+          </>
+        ) : null}
       </aside>
 
       <section
@@ -2094,7 +2103,7 @@ export function GalaxyWorkspace({
         }}
       >
         <section className="screen active" aria-label={activeZoneContent.title}>
-          <div className="top-actions galaxy-hud">
+          {isGalaxyScene ? <div className="top-actions galaxy-hud">
             <button
               aria-label="星图菜单"
               className={`chip-btn ${layerDockPinned ? "active" : ""}`}
@@ -2125,16 +2134,18 @@ export function GalaxyWorkspace({
               <Plus size={15} />
               点亮记忆星
             </button>
-          </div>
+          </div> : null}
 
-          <div className="assistant-note">
-            <Sparkles size={15} />
-            <span>
-              星图助手建议：{routeSteps[0]?.detail ?? "从一颗真实的家人星球开始，逐步点亮记忆、确认共鸣，再写成家书。"}
-            </span>
-          </div>
+          {isGalaxyScene ? (
+            <div className="assistant-note">
+              <Sparkles size={15} />
+              <span>
+                星图助手建议：{routeSteps[0]?.detail ?? "从一颗真实的家人星球开始，逐步点亮记忆、确认共鸣，再写成家书。"}
+              </span>
+            </div>
+          ) : null}
 
-          {activeZone === "galaxy" ? (
+          {isGalaxyScene ? (
             <RouteCard
               activeStep={activeRouteStep}
               collapsed={routeCollapsed}
@@ -2218,23 +2229,27 @@ export function GalaxyWorkspace({
             />
           </div>
 
-          <ScreenSummary content={activeZoneContent} />
-          <MiniMap activeLabel={zoneContent[activeZone].eyebrow} planets={visiblePlanets} rotation={view.rotate} />
-          <ViewCompass rotation={view.rotate} />
-          <ViewControls
-            autoCruise={autoCruise}
-            view={view}
-            onAutoCruise={toggleAutoCruise}
-            onReset={() => setView(initialView)}
-            onRotate={() => setView((current) => ({ ...current, rotate: current.rotate + 18 }))}
-            onZoomIn={() =>
-              setView((current) => ({ ...current, zoom: Math.min(1.65, current.zoom + 0.1) }))
-            }
-            onZoomOut={() =>
-              setView((current) => ({ ...current, zoom: Math.max(0.72, current.zoom - 0.1) }))
-            }
-          />
-          <div className="gesture-hint">拖拽漫游 / 滚轮缩放 / 双击靠近星球</div>
+          {isGalaxyScene ? (
+            <>
+              <ScreenSummary content={activeZoneContent} />
+              <MiniMap activeLabel={zoneContent[activeZone].eyebrow} planets={visiblePlanets} rotation={view.rotate} />
+              <ViewCompass rotation={view.rotate} />
+              <ViewControls
+                autoCruise={autoCruise}
+                view={view}
+                onAutoCruise={toggleAutoCruise}
+                onReset={() => setView(initialView)}
+                onRotate={() => setView((current) => ({ ...current, rotate: current.rotate + 18 }))}
+                onZoomIn={() =>
+                  setView((current) => ({ ...current, zoom: Math.min(1.65, current.zoom + 0.1) }))
+                }
+                onZoomOut={() =>
+                  setView((current) => ({ ...current, zoom: Math.max(0.72, current.zoom - 0.1) }))
+                }
+              />
+              <div className="gesture-hint">拖拽漫游 / 滚轮缩放 / 双击靠近星球</div>
+            </>
+          ) : null}
           <AnimatePresence>
             {starMapEditorOpen ? (
               <StarMapEditor
@@ -2341,18 +2356,17 @@ export function GalaxyWorkspace({
           </motion.div>
         ) : null}
       </AnimatePresence>
-      {immersiveMode || autoCruise ? (
-        <motion.div
+      {isGalaxyScene && (immersiveMode || autoCruise) ? (
+        <motion.button
           animate={{ opacity: 1, y: 0 }}
           className="immersive-pill"
           initial={{ opacity: 0, y: 12 }}
+          onClick={exitImmersiveMode}
           transition={{ duration: 0.24 }}
+          type="button"
         >
-          <span>{autoCruise ? "自动巡航中 · 星球正在沿轨道漫游" : "沉浸漫游中 · 左侧目录已自动收起"}</span>
-          <button onClick={exitImmersiveMode} type="button">
-            退出沉浸
-          </button>
-        </motion.div>
+          退出沉浸
+        </motion.button>
       ) : null}
     </main>
   );
@@ -2510,10 +2524,6 @@ function ZoneScene({
             先创建一颗家人星球，再为它设置可见范围。
           </section>
         )}
-        <SceneHint
-          subtitle="私密、家庭、公开不是开关，而是三层轨道"
-          title="每颗星球都有自己的光照范围"
-        />
       </>
     );
   }
@@ -2523,18 +2533,21 @@ function ZoneScene({
     return (
       <>
         <PlanetLinkField links={planetLinks} planets={memorialPlanets} />
-        {memorialPlanets.length > 0 ? memorialPlanets.map((planet) => (
-          <ScenePlanetButton
-            badge="念"
-            className={planetClassByType[getPlanetPresentationType(planet)]}
-            coverAssetId={planet.coverAssetId}
-            key={planet.id}
-            label={planet.name}
-            left={`${planet.position.x}%`}
-            onClick={() => onOpenPlanet(planet.id)}
-            top={`${planet.position.y}%`}
-          />
-        )) : (
+        {memorialPlanets.length > 0 ? memorialPlanets.map((planet, index) => {
+          const position = memorialScenePosition(index, memorialPlanets.length);
+          return (
+            <ScenePlanetButton
+              badge="念"
+              className={planetClassByType[getPlanetPresentationType(planet)]}
+              coverAssetId={planet.coverAssetId}
+              key={planet.id}
+              label={planet.name}
+              left={position.left}
+              onClick={() => onOpenPlanet(planet.id)}
+              top={position.top}
+            />
+          );
+        }) : (
           <section className="scene-empty-state" role="status">
             当前还没有纪念星
           </section>
@@ -2884,12 +2897,18 @@ function ZoneScene({
         <SparkButton label="查看真实共鸣候选" left="50%" onClick={() => onGo("resonance")} top="25%" />
       ) : null}
 
-      <SceneHint
-        subtitle="自由靠近任意星球；第一次进入时，也可以跟随推荐航线"
-        title="这里不是功能菜单，而是一片可以漫游的家庭星系"
-      />
     </>
   );
+}
+
+function memorialScenePosition(index: number, count: number) {
+  if (count === 1) return { left: "50%", top: "50%" };
+
+  const angle = (Math.PI * 2 * index) / count - Math.PI / 2;
+  return {
+    left: `${50 + Math.cos(angle) * 24}%`,
+    top: `${50 + Math.sin(angle) * 18}%`,
+  };
 }
 
 function ScenePlanetButton({
@@ -3265,6 +3284,7 @@ function StarMapEditor({
       className="star-map-editor"
       exit={{ opacity: 0, y: 18, scale: 0.96 }}
       initial={{ opacity: 0, y: 18, scale: 0.96 }}
+      onWheel={(event) => event.stopPropagation()}
       role="dialog"
       transition={{ duration: 0.28, ease: [0.22, 0.86, 0.28, 1] }}
     >

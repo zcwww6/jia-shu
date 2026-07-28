@@ -201,6 +201,37 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByText("母女家庭轨道").closest("button")).toBeNull();
   });
 
+  it("keeps galaxy controls in the galaxy and preserves editor wheel scrolling", () => {
+    renderDemoGalaxy();
+
+    expect(screen.getByRole("button", { name: "星图菜单" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "放大视角" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "星图编辑" }));
+    const canvas = document.querySelector(".galaxy-canvas");
+    const zoomBefore = canvas?.getAttribute("style");
+    fireEvent.wheel(screen.getByRole("dialog", { name: "星图编辑" }), { deltaY: -100 });
+    expect(canvas).toHaveAttribute("style", zoomBefore ?? "");
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭星图编辑" }));
+    fireEvent.click(screen.getByRole("button", { name: "隐私星域" }));
+
+    expect(screen.queryByRole("button", { name: "星图菜单" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "放大视角" })).not.toBeInTheDocument();
+    expect(screen.queryByText("每颗星球都有自己的光照范围")).not.toBeInTheDocument();
+  });
+
+  it("centers memorial scene planets without changing their saved galaxy coordinates", () => {
+    renderDemoGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "纪念星域" }));
+
+    expect(screen.getByRole("button", { name: "外婆的纪念星" })).toHaveStyle({
+      left: "50%",
+      top: "50%",
+    });
+  });
+
   it("persists all selected planet settings from the server response and carries its version forward", async () => {
     const responses = [
       {
@@ -623,7 +654,7 @@ describe("GalaxyWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "隐私星域" }));
 
-    expect(screen.getByText("每颗星球都有自己的光照范围")).toBeInTheDocument();
+    expect(screen.queryByText("每颗星球都有自己的光照范围")).not.toBeInTheDocument();
     expect(screen.getAllByText("私密核心").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("公开分享轨道").length).toBeGreaterThanOrEqual(1);
   });
@@ -714,7 +745,7 @@ describe("GalaxyWorkspace", () => {
 
     expect(screen.getByTestId("galaxy-app")).toHaveClass("auto-cruise-active", "immersive-ui-active");
     expect(screen.getByTestId("galaxy-app")).not.toHaveClass("planet-roaming-active");
-    expect(screen.getByText("自动巡航中 · 星球正在沿轨道漫游")).toBeInTheDocument();
+    expect(screen.queryByText("自动巡航中 · 星球正在沿轨道漫游")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "妈妈的星球漫游" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "退出沉浸" }));
@@ -737,7 +768,7 @@ describe("GalaxyWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "退出沉浸" }));
     fireEvent.click(screen.getAllByRole("button", { name: "自动巡航" })[0]);
-    expect(screen.getByText("自动巡航中 · 星球正在沿轨道漫游")).toBeInTheDocument();
+    expect(screen.queryByText("自动巡航中 · 星球正在沿轨道漫游")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "退出沉浸" }));
     expect(screen.queryByText("自动巡航中 · 星球正在沿轨道漫游")).not.toBeInTheDocument();
 
