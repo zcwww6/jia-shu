@@ -62,6 +62,19 @@ import {
   type LegacyManagedPlanet,
   type LegacyPlanetUpdate,
 } from "./legacy-galaxy-api";
+import {
+  createLegacyBook,
+  createLegacyBookShare,
+  getLegacyBook,
+  LegacyBookApiError,
+  listLegacyBookShares,
+  revokeLegacyBookShare,
+  updateLegacyBook,
+  type LegacyBookDetail,
+  type LegacyBookShare,
+  type LegacyBookShareOptions,
+  type LegacyBookVisibility,
+} from "./legacy-book-api";
 
 interface GalaxyView {
   panX: number;
@@ -172,6 +185,26 @@ type ResonanceScanOperation = {
 type MemoryDraftContext = {
   draftId: string;
   signature: string;
+};
+
+type GrowingBookSummary = {
+  id: string;
+  title: string | null;
+  status: "draft" | "ready";
+  memoryCount: number;
+};
+
+type EligibleBookSource = { id: string; title: string | null };
+
+type ActiveLegacyBook = LegacyBookDetail & { sourceLabels: string[] };
+
+const themeTemplateKeyByLabel: Record<string, string> = {
+  "家庭团圆": "family_reunion",
+  "父母人生": "parent_life",
+  "亲子成长": "child_growth",
+  "纪念星册": "memorial_album",
+  "旅行星云": "travel_memories",
+  "伴侣星云": "couple_story",
 };
 
 function buildMemoryDraftSignature(planetId: string, sourceText: string) {
@@ -398,12 +431,16 @@ export function GalaxyWorkspace({
   initialArchivedPlanets = [],
   initialConfirmedMemories = [],
   initialPendingResonances = [],
+  initialGrowingBooks = [],
+  initialEligibleBookSources = [],
 }: {
   initialPlanets?: Planet[];
   initialLinks?: PlanetLink[];
   initialArchivedPlanets?: Planet[];
   initialConfirmedMemories?: MemoryStar[];
   initialPendingResonances?: LegacyPendingResonance[];
+  initialGrowingBooks?: GrowingBookSummary[];
+  initialEligibleBookSources?: EligibleBookSource[];
 }) {
   const startingPlanets = initialPlanets ?? [];
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
@@ -445,8 +482,10 @@ export function GalaxyWorkspace({
   const memoryDraftRequestRef = useRef<{ key: string; signature: string } | null>(null);
   const memoryDraftContextRef = useRef<MemoryDraftContext | null>(null);
   const memoryJobRequestRef = useRef<{ draftId: string; key: string } | null>(null);
+  const bookGenerationRequestRef = useRef<{ key: string; signature: string } | null>(null);
+  const bookShareRequestRef = useRef<{ key: string; signature: string } | null>(null);
+  const bookShareRevokeRequestRef = useRef(new Map<string, string>());
 
-  // 家书仍保留旧演示状态；文字记忆和共鸣候选均走真实持久化流程。
   const [quickRecordContent, setQuickRecordContent] = useState(
     "2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。",
   );
@@ -467,6 +506,23 @@ export function GalaxyWorkspace({
   const [memoryFlowLoading, setMemoryFlowLoading] = useState(false);
   const [memoryFlowError, setMemoryFlowError] = useState<string | null>(null);
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
+  const [eligibleBookSources, setEligibleBookSources] = useState<EligibleBookSource[]>(initialEligibleBookSources);
+  const [growingBooks, setGrowingBooks] = useState<GrowingBookSummary[]>(initialGrowingBooks);
+  const [activeBook, setActiveBook] = useState<ActiveLegacyBook | null>(null);
+  const [bookTitleDraft, setBookTitleDraft] = useState("");
+  const [bookBodyDraft, setBookBodyDraft] = useState("");
+  const [bookVisibility, setBookVisibility] = useState<LegacyBookVisibility>("family");
+  const [bookLoading, setBookLoading] = useState(false);
+  const [bookError, setBookError] = useState<string | null>(null);
+  const [bookSaveError, setBookSaveError] = useState<string | null>(null);
+  const [shareOptions, setShareOptions] = useState<LegacyBookShareOptions>({
+    showBody: true,
+    showSourceTitles: true,
+    showOriginalText: false,
+  });
+  const [bookShares, setBookShares] = useState<LegacyBookShare[]>([]);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const hasConfirmedResonanceThisSession = confirmedResonanceSourceMemoryIds !== null;
 
   const activeZoneContent = zoneContent[activeZone];
@@ -536,6 +592,16 @@ export function GalaxyWorkspace({
   const resonanceTargetPlanet = resonanceTargetMemory
     ? galaxyPlanets.find((planet) => planet.id === resonanceTargetMemory.planetId) ?? null
     : null;
+  const confirmedBookSources = useMemo(() => {
+    if (!confirmedResonanceSourceMemoryIds) return [];
+
+    const titleById = new Map(eligibleBookSources.map((source) => [source.id, source.title]));
+    return confirmedResonanceSourceMemoryIds.flatMap((id) => {
+      if (!titleById.has(id)) return [];
+      return [{ id, title: titleById.get(id)?.trim() || "未命名记忆" }];
+    });
+  }, [confirmedResonanceSourceMemoryIds, eligibleBookSources]);
+  const canOpenSavedBooks = growingBooks.length > 0;
 
   function abortMemoryFlowOperation() {
     memoryFlowOperationRef.current?.controller.abort();
@@ -606,6 +672,194 @@ export function GalaxyWorkspace({
     const key = crypto.randomUUID();
     memoryJobRequestRef.current = { draftId, key };
     return key;
+  }
+
+  function bookGenerationRequestKey(signature: string) {
+    const current = bookGenerationRequestRef.current;
+    if (current?.signature === signature) return current.key;
+
+    const key = crypto.randomUUID();
+    bookGenerationRequestRef.current = { key, signature };
+    return key;
+  }
+
+  function bookShareRequestKey(signature: string) {
+    const current = bookShareRequestRef.current;
+    if (current?.signature === signature) return current.key;
+
+    const key = crypto.randomUUID();
+    bookShareRequestRef.current = { key, signature };
+    return key;
+  }
+
+  function bookShareRevokeRequestKey(bookId: string, token: string) {
+    const signature = `${bookId}:${token}`;
+    const current = bookShareRevokeRequestRef.current.get(signature);
+    if (current) return current;
+
+    const key = crypto.randomUUID();
+    bookShareRevokeRequestRef.current.set(signature, key);
+    return key;
+  }
+
+  function applyActiveBook(book: LegacyBookDetail, sourceLabels: string[]) {
+    setActiveBook({ ...book, sourceLabels });
+    setBookTitleDraft(book.title);
+    setBookBodyDraft(book.body);
+    setBookVisibility(book.visibility);
+  }
+
+  async function loadActiveBookShares(bookId: string) {
+    try {
+      const result = await listLegacyBookShares(bookId);
+      setBookShares(result.shares);
+    } catch (error) {
+      setShareError(errorMessage(error));
+    }
+  }
+
+  async function openSavedBook(bookId: string, knownSourceLabels: string[] = []) {
+    setBookLoading(true);
+    setBookError(null);
+    setBookSaveError(null);
+    setBookShares([]);
+    setShareError(null);
+    try {
+      const book = await getLegacyBook(bookId);
+      const sourceLabels = knownSourceLabels.length > 0
+        ? knownSourceLabels
+        : activeBook?.id === bookId ? activeBook.sourceLabels : [];
+      applyActiveBook(book, sourceLabels);
+      await loadActiveBookShares(bookId);
+    } catch (error) {
+      setBookError(errorMessage(error));
+    } finally {
+      setBookLoading(false);
+    }
+  }
+
+  async function generateLegacyBook() {
+    if (!hasConfirmedResonanceThisSession || !confirmedResonanceSourceMemoryIds) {
+      setBookError(bookWorkshopLockMessage);
+      return;
+    }
+
+    if (confirmedBookSources.length !== confirmedResonanceSourceMemoryIds.length) {
+      setBookError("这条共鸣星轨的来源尚未获得生成家书授权。");
+      return;
+    }
+
+    const input = {
+      ...(bookTitleDraft.trim() ? { title: bookTitleDraft.trim() } : {}),
+      sourceMemoryIds: confirmedBookSources.map((source) => source.id),
+      sourceRange: "binary_system" as const,
+      themeTemplateKey: themeTemplateKeyByLabel[selectedTheme] ?? selectedTheme,
+      visibility: bookVisibility,
+    };
+    const requestKey = bookGenerationRequestKey(JSON.stringify(input));
+
+    setBookLoading(true);
+    setBookError(null);
+    setBookSaveError(null);
+    try {
+      const created = await createLegacyBook(input, requestKey);
+      const sourceLabels = created.draft.sourceMemoryIds.map((id) => (
+        created.draft.sourceLabels?.[id]
+        ?? confirmedBookSources.find((source) => source.id === id)?.title
+        ?? "已授权记忆"
+      ));
+      const createdDetail: ActiveLegacyBook = {
+        id: created.id,
+        title: created.title,
+        body: created.body,
+        sections: created.sections,
+        status: created.status,
+        version: 0,
+        visibility: input.visibility,
+        sourceLabels,
+      };
+      setActiveBook(createdDetail);
+      setBookTitleDraft(created.title);
+      setBookBodyDraft(created.body);
+      setGrowingBooks((current) => {
+        const next = { id: created.id, title: created.title, status: "ready" as const, memoryCount: created.draft.sourceMemoryIds.length };
+        return [next, ...current.filter((book) => book.id !== created.id)];
+      });
+      await openSavedBook(created.id, sourceLabels);
+    } catch (error) {
+      setBookError(errorMessage(error));
+    } finally {
+      setBookLoading(false);
+    }
+  }
+
+  async function saveActiveBook() {
+    if (!activeBook || activeBook.version < 1) {
+      setBookSaveError("家书详情尚未加载完成，请刷新后重试。");
+      return;
+    }
+
+    setBookLoading(true);
+    setBookSaveError(null);
+    try {
+      const updated = await updateLegacyBook(activeBook.id, {
+        version: activeBook.version,
+        title: bookTitleDraft,
+        body: bookBodyDraft,
+      });
+      setActiveBook((current) => current && current.id === updated.id
+        ? { ...current, ...updated }
+        : current);
+      setGrowingBooks((current) => current.map((book) => (
+        book.id === updated.id ? { ...book, title: updated.title } : book
+      )));
+      setBookTitleDraft(updated.title);
+      setBookBodyDraft(updated.body);
+      setToast("家书修改已保存");
+    } catch (error) {
+      const message = errorMessage(error);
+      const versionConflict = error instanceof LegacyBookApiError && error.status === 409;
+      setBookSaveError(versionConflict || /版本|conflict/i.test(message) ? `${message}，刷新后重试` : message);
+    } finally {
+      setBookLoading(false);
+    }
+  }
+
+  async function createActiveBookShare() {
+    if (!activeBook) {
+      setShareError("请先打开一封真实已保存家书，再创建分享链接。");
+      return;
+    }
+
+    const requestKey = bookShareRequestKey(JSON.stringify({ bookId: activeBook.id, ...shareOptions }));
+    setShareLoading(true);
+    setShareError(null);
+    try {
+      const share = await createLegacyBookShare(activeBook.id, shareOptions, requestKey);
+      setBookShares((current) => [share, ...current.filter((item) => item.token !== share.token)]);
+      bookShareRequestRef.current = null;
+    } catch (error) {
+      setShareError(errorMessage(error));
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function revokeActiveBookShare(token: string) {
+    if (!activeBook) return;
+
+    setShareLoading(true);
+    setShareError(null);
+    try {
+      await revokeLegacyBookShare(activeBook.id, token, bookShareRevokeRequestKey(activeBook.id, token));
+      setBookShares((current) => current.filter((share) => share.token !== token));
+      bookShareRequestRef.current = null;
+      bookShareRevokeRequestRef.current.delete(`${activeBook.id}:${token}`);
+    } catch (error) {
+      setShareError(errorMessage(error));
+    } finally {
+      setShareLoading(false);
+    }
   }
 
   useEffect(() => () => {
@@ -764,7 +1018,7 @@ export function GalaxyWorkspace({
     zone: GalaxyZoneKey,
     options: { panel?: PanelKey | null; preserveSelectedPlanet?: boolean } = {},
   ) {
-    if (zone === "books" && !hasConfirmedResonanceThisSession) {
+    if (zone === "books" && !hasConfirmedResonanceThisSession && !canOpenSavedBooks) {
       setToast(bookWorkshopLockMessage);
       return false;
     }
@@ -960,6 +1214,12 @@ export function GalaxyWorkspace({
         status: "confirmed",
       });
       setLitMemories((current) => [...current.filter((item) => item.id !== memory.id), memory]);
+      if (confirmed.allowBook) {
+        setEligibleBookSources((current) => [
+          ...current.filter((source) => source.id !== memory.id),
+          { id: memory.id, title: memory.title },
+        ]);
+      }
       setGalaxyPlanets((current) => current.map((planet) => (
         planet.id === memory.planetId
           ? { ...planet, stats: { ...planet.stats, memoryStars: planet.stats.memoryStars + 1 } }
@@ -1184,7 +1444,7 @@ export function GalaxyWorkspace({
     setRoamingPlanetId(null);
   }
 
-  function generateBookFromPlanet(planet: Planet) {
+  function openBookWorkshopFromPlanet(planet: Planet) {
     if (!switchGalaxyZone("books")) return;
     setToast(`已从「${planet.name}」进入家书工坊`);
   }
@@ -1646,7 +1906,7 @@ export function GalaxyWorkspace({
               selectedPlanet={selectedPlanet}
               onConfigurePlanetPrivacy={configurePlanetPrivacy}
               onEditPlanetTheme={editPlanetTheme}
-              onGenerateBookFromPlanet={generateBookFromPlanet}
+              onOpenBookWorkshopFromPlanet={openBookWorkshopFromPlanet}
               onHidePlanet={hidePlanet}
               onOpenStarMapEditor={() => setStarMapEditorOpen(true)}
               onOpenPlanetLifecycle={openPlanetLifecycle}
@@ -1654,6 +1914,34 @@ export function GalaxyWorkspace({
               onSaveSelectedPlanetTheme={(theme) => {
                 if (selectedPlanet) void persistPlanetChange(selectedPlanet, { theme });
               }}
+              activeBook={activeBook}
+              bookBodyDraft={bookBodyDraft}
+              bookError={bookError}
+              bookLoading={bookLoading}
+              bookSaveError={bookSaveError}
+              bookShares={bookShares}
+              bookTitleDraft={bookTitleDraft}
+              bookVisibility={bookVisibility}
+              canCreateBook={
+                hasConfirmedResonanceThisSession
+                && confirmedBookSources.length > 0
+                && confirmedBookSources.length === confirmedResonanceSourceMemoryIds?.length
+              }
+              canOpenSavedBooks={canOpenSavedBooks}
+              confirmedBookSources={confirmedBookSources}
+              growingBooks={growingBooks}
+              onCreateBook={generateLegacyBook}
+              onCreateShare={createActiveBookShare}
+              onOpenSavedBook={openSavedBook}
+              onRevokeShare={revokeActiveBookShare}
+              onSaveBook={saveActiveBook}
+              setBookBodyDraft={setBookBodyDraft}
+              setBookTitleDraft={setBookTitleDraft}
+              setBookVisibility={setBookVisibility}
+              setShareOptions={setShareOptions}
+              shareError={shareError}
+              shareLoading={shareLoading}
+              shareOptions={shareOptions}
               setSelectedWorkshopBg={setSelectedWorkshopBg}
               setSelectedWorkshopMaterial={setSelectedWorkshopMaterial}
               setSelectedWorkshopZone={setSelectedWorkshopZone}
@@ -1798,7 +2086,19 @@ export function GalaxyWorkspace({
 
 function ZoneScene({
   activeZone,
+  activeBook,
   anchorPlanetIds,
+  bookBodyDraft,
+  bookError,
+  bookLoading,
+  bookSaveError,
+  bookShares,
+  bookTitleDraft,
+  bookVisibility,
+  canCreateBook,
+  canOpenSavedBooks,
+  confirmedBookSources,
+  growingBooks,
   resonanceCandidate,
   resonanceSourceMemory,
   resonanceTargetMemory,
@@ -1807,9 +2107,12 @@ function ZoneScene({
   litMemories,
   closingPlanetId,
   onGo,
+  onCreateBook,
+  onCreateShare,
   onOpenConfirmedMemory,
   onOpenPanel,
   onOpenPlanet,
+  onOpenSavedBook,
   onSelectTheme,
   onSelectPlanet,
   onToast,
@@ -1824,22 +2127,43 @@ function ZoneScene({
   setSelectedWorkshopBg,
   setSelectedWorkshopMaterial,
   setSelectedWorkshopZone,
+  setShareOptions,
+  shareError,
+  shareLoading,
+  shareOptions,
   onConfigurePlanetPrivacy,
   onEditPlanetTheme,
-  onGenerateBookFromPlanet,
+  onOpenBookWorkshopFromPlanet,
   onHidePlanet,
   onOpenStarMapEditor,
   onOpenPlanetLifecycle,
   onRenamePlanet,
+  onRevokeShare,
+  onSaveBook,
   onSaveSelectedPlanetTheme,
+  setBookBodyDraft,
+  setBookTitleDraft,
+  setBookVisibility,
 }: {
   activeZone: GalaxyZoneKey;
+  activeBook: ActiveLegacyBook | null;
   anchorPlanetIds: {
     self: string | null;
     parent: string | null;
     memorial: string | null;
     public: string | null;
   };
+  bookBodyDraft: string;
+  bookError: string | null;
+  bookLoading: boolean;
+  bookSaveError: string | null;
+  bookShares: LegacyBookShare[];
+  bookTitleDraft: string;
+  bookVisibility: LegacyBookVisibility;
+  canCreateBook: boolean;
+  canOpenSavedBooks: boolean;
+  confirmedBookSources: Array<{ id: string; title: string }>;
+  growingBooks: GrowingBookSummary[];
   resonanceCandidate: LegacyPendingResonance | null;
   resonanceSourceMemory: MemoryStar | null;
   resonanceTargetMemory: MemoryStar | null;
@@ -1848,9 +2172,12 @@ function ZoneScene({
   litMemories: MemoryStar[];
   closingPlanetId: string | null;
   onGo: (zone: GalaxyZoneKey) => void;
+  onCreateBook: () => void;
+  onCreateShare: () => void;
   onOpenConfirmedMemory: (memoryId: string) => void;
   onOpenPanel: (key: PanelKey) => void;
   onOpenPlanet: (planetId: string | null) => void;
+  onOpenSavedBook: (bookId: string) => void;
   onSelectTheme: (theme: string) => void;
   onSelectPlanet: (planetId: string) => void;
   onToast: (message: string) => void;
@@ -1862,16 +2189,25 @@ function ZoneScene({
   selectedWorkshopMaterial: string;
   selectedWorkshopZone: GalaxyZoneKey;
   selectedPlanet: Planet | null;
+  setBookBodyDraft: (value: string) => void;
+  setBookTitleDraft: (value: string) => void;
+  setBookVisibility: (value: LegacyBookVisibility) => void;
   setSelectedWorkshopBg: (value: string) => void;
   setSelectedWorkshopMaterial: (value: string) => void;
   setSelectedWorkshopZone: (value: GalaxyZoneKey) => void;
+  setShareOptions: (value: LegacyBookShareOptions) => void;
+  shareError: string | null;
+  shareLoading: boolean;
+  shareOptions: LegacyBookShareOptions;
   onConfigurePlanetPrivacy: (planet: Planet) => void;
   onEditPlanetTheme: (planetId: string) => void;
-  onGenerateBookFromPlanet: (planet: Planet) => void;
+  onOpenBookWorkshopFromPlanet: (planet: Planet) => void;
   onHidePlanet: (planetId: string) => void;
   onOpenStarMapEditor: () => void;
   onOpenPlanetLifecycle: (planetId: string) => void;
   onRenamePlanet: (planet: Planet) => void;
+  onRevokeShare: (token: string) => void;
+  onSaveBook: () => void;
   onSaveSelectedPlanetTheme: (theme: string) => void;
 }) {
   if (activeZone === "privacy") {
@@ -2175,13 +2511,118 @@ function ZoneScene({
       <div className="bookmaker-stage">
         <section className="book-workbench">
           <p className="panel-kicker">家书工坊</p>
-          <h2>家书工坊已准备好，下一步将从真实来源创建</h2>
-          <p>当前主题：{selectedTheme}。本会话已确认一条真实共鸣星轨；家书生成与分享将在下一步接入真实来源。</p>
+          <h2>{activeBook ? "正在编辑真实已保存家书" : "从真实来源写成家书"}</h2>
+          <p>当前主题：{selectedTheme}。只会调用已保存家书的真实服务，不会读取本地草稿或生成演示链接。</p>
+
+          {growingBooks.length > 0 ? (
+            <div className="book-sections" aria-label="已保存家书">
+              <strong>已保存家书</strong>
+              {growingBooks.map((book) => (
+                <button
+                  aria-label={`打开已保存家书：${book.title ?? "未命名家书"}`}
+                  className="secondary"
+                  key={book.id}
+                  onClick={() => onOpenSavedBook(book.id)}
+                  type="button"
+                >
+                  {book.title ?? "未命名家书"} · {book.memoryCount} 条记忆
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {!activeBook && canCreateBook ? (
+            <>
+              <label>
+                家书标题（可选）
+                <input
+                  aria-label="家书标题"
+                  onChange={(event) => setBookTitleDraft(event.target.value)}
+                  placeholder="让 AI 为这封家书命名"
+                  value={bookTitleDraft}
+                />
+              </label>
+              <label>
+                可见范围
+                <select
+                  aria-label="家书可见范围"
+                  onChange={(event) => setBookVisibility(event.target.value as LegacyBookVisibility)}
+                  value={bookVisibility}
+                >
+                  <option value="family">家庭可见</option>
+                  <option value="private">仅自己可见</option>
+                </select>
+              </label>
+              <div className="book-sections" aria-label="本次家书来源">
+                <strong>本次星轨已选来源</strong>
+                {confirmedBookSources.map((source) => <span className="book-source" key={source.id}>{source.title}</span>)}
+              </div>
+              <div className="book-actions">
+                <button className="primary" disabled={bookLoading} onClick={onCreateBook} type="button">
+                  {bookLoading ? "正在请求 AI 生成…" : "生成这本家书"}
+                </button>
+              </div>
+            </>
+          ) : null}
+
+          {!activeBook && !canCreateBook && !canOpenSavedBooks ? (
+            <p className="scene-empty-state">请先确认一条共鸣星轨，才可基于真实记忆创建家书。</p>
+          ) : null}
+          {bookError ? <p role="alert">{bookError}</p> : null}
         </section>
-        <SceneHint
-          subtitle="只基于本会话已确认的共鸣星轨；尚未生成、展示或分享任何家书内容"
-          title="真实来源准备好后，才会创建家书"
-        />
+
+        {activeBook ? (
+          <section className="book-preview" aria-label="真实家书详情">
+            <p>真实已保存家书</p>
+            <label>
+              家书标题
+              <input aria-label="家书标题" onChange={(event) => setBookTitleDraft(event.target.value)} value={bookTitleDraft} />
+            </label>
+            <label>
+              家书正文
+              <textarea aria-label="家书正文" onChange={(event) => setBookBodyDraft(event.target.value)} value={bookBodyDraft} />
+            </label>
+            <div className="book-actions">
+              <button className="primary" disabled={bookLoading} onClick={onSaveBook} type="button">保存家书修改</button>
+            </div>
+            {bookSaveError ? <p role="alert">{bookSaveError}</p> : null}
+            <div className="book-sections">
+              {activeBook.sections.map((section, index) => (
+                <article className="book-section" key={`${section.title}-${index}`}>
+                  <strong>{section.title}</strong>
+                  <p>{section.body}</p>
+                </article>
+              ))}
+            </div>
+            {activeBook.sourceLabels.length > 0 ? (
+              <div className="book-sections" aria-label="真实来源标签">
+                <strong>来源记忆</strong>
+                {activeBook.sourceLabels.map((label) => <span className="book-source" key={label}>{label}</span>)}
+              </div>
+            ) : null}
+
+            <div className="book-sections" aria-label="分享面板">
+              <strong>分享范围</strong>
+              <label><input checked={shareOptions.showBody} onChange={(event) => setShareOptions({ ...shareOptions, showBody: event.target.checked })} type="checkbox" />显示家书正文</label>
+              <label><input checked={shareOptions.showSourceTitles} onChange={(event) => setShareOptions({ ...shareOptions, showSourceTitles: event.target.checked })} type="checkbox" />显示来源标题</label>
+              <label><input aria-label="分享原始文本" checked={shareOptions.showOriginalText} onChange={(event) => setShareOptions({ ...shareOptions, showOriginalText: event.target.checked })} type="checkbox" />分享原始文本</label>
+              <button className="secondary" disabled={shareLoading} onClick={onCreateShare} type="button">创建分享链接</button>
+              {shareError ? <p role="alert">{shareError}</p> : null}
+              {bookShares.map((share) => (
+                <div className="book-source" key={share.token}>
+                  <span>{share.url}</span>
+                  <button aria-label={`撤回分享：${share.token}`} className="secondary" disabled={shareLoading} onClick={() => onRevokeShare(share.token)} type="button">撤回</button>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <section className="book-preview">
+            <p>还没有打开真实家书</p>
+            <h3>{canOpenSavedBooks ? "从已保存家书继续阅读" : "确认真实共鸣后再生成"}</h3>
+            <button className="secondary" disabled type="button">创建分享链接</button>
+          </section>
+        )}
       </div>
     );
   }
@@ -2198,7 +2639,7 @@ function ZoneScene({
           key={planet.id}
           onConfigurePrivacy={onConfigurePlanetPrivacy}
           onEditTheme={onEditPlanetTheme}
-          onGenerateBook={onGenerateBookFromPlanet}
+          onOpenBookWorkshop={onOpenBookWorkshopFromPlanet}
           onHide={onHidePlanet}
           onLightMemory={() => onOpenPanel("quickRecord")}
           onLink={() => {
@@ -2311,7 +2752,7 @@ function GalaxyPlanetObject({
   closing,
   onConfigurePrivacy,
   onEditTheme,
-  onGenerateBook,
+  onOpenBookWorkshop,
   onHide,
   onLightMemory,
   onLink,
@@ -2325,7 +2766,7 @@ function GalaxyPlanetObject({
   closing: boolean;
   onConfigurePrivacy: (planet: Planet) => void;
   onEditTheme: (planetId: string) => void;
-  onGenerateBook: (planet: Planet) => void;
+  onOpenBookWorkshop: (planet: Planet) => void;
   onHide: (planetId: string) => void;
   onLightMemory: () => void;
   onLink: () => void;
@@ -2372,9 +2813,9 @@ function GalaxyPlanetObject({
                 <Plus size={15} />
                 <span>点亮记忆</span>
               </button>
-              <button aria-label="一键生成家书" className="orbit-action action-book" onClick={() => onGenerateBook(planet)} type="button">
+              <button aria-label="进入家书工坊" className="orbit-action action-book" onClick={() => onOpenBookWorkshop(planet)} type="button">
                 <BookOpen size={15} />
-                <span>生成家书</span>
+                <span>写成家书</span>
               </button>
               <button aria-label="编辑主题" className="orbit-action action-theme" onClick={() => onEditTheme(planet.id)} type="button">
                 <Palette size={15} />

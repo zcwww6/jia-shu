@@ -464,7 +464,7 @@ describe("GalaxyWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
-    fireEvent.click(screen.getByRole("button", { name: "一键生成家书" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入家书工坊" }));
     expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "家书光束" })).not.toBeInTheDocument();
   });

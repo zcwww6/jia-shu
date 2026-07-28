@@ -114,6 +114,18 @@ describe("GalaxyPage", () => {
           version: 2,
         },
       ],
+      growingBooks: [
+        {
+          id: "server-book-1",
+          title: "服务器已保存家书",
+          status: "ready",
+          memoryCount: 2,
+        },
+      ],
+      eligibleBookSources: [
+        { id: "server-memory-1", title: "服务端确认的除夕" },
+        { id: "server-memory-2", title: "服务端确认的团圆" },
+      ],
     });
 
     render(await GalaxyPage());
@@ -124,5 +136,7 @@ describe("GalaxyPage", () => {
     expect(screen.getByRole("button", { name: "新点亮：服务端确认的除夕" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
     expect(screen.getByRole("button", { name: "共鸣候选：服务端确认的除夕 ↔ 服务端确认的团圆" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
+    expect(screen.getByRole("button", { name: "打开已保存家书：服务器已保存家书" })).toBeInTheDocument();
   });
 });

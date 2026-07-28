@@ -80,7 +80,7 @@ describe("GalaxyWorkspace book entry guard", () => {
     const fetchMock = renderUnconfirmedGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
-    fireEvent.click(screen.getByRole("button", { name: "一键生成家书" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入家书工坊" }));
 
     expectLockedWithoutBookContent(fetchMock);
   });
@@ -95,7 +95,7 @@ describe("GalaxyWorkspace book entry guard", () => {
     expectLockedWithoutBookContent(fetchMock);
   });
 
-  it("opens only a mock-free placeholder after a versioned confirmation succeeds", async () => {
+  it("opens the real-source generation UI only after a versioned confirmation succeeds", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/resonances/resonance-1/confirm" && init?.method === "POST") {
         return new Response(JSON.stringify({
@@ -146,6 +146,10 @@ describe("GalaxyWorkspace book entry guard", () => {
             reason: "两条真实记忆指向同一次团圆。", version: 1,
           },
         ]}
+        initialEligibleBookSources={[
+          { id: "memory-1", title: "妈妈的真实除夕" },
+          { id: "memory-2", title: "我的真实除夕" },
+        ]}
       />,
     );
 
@@ -168,10 +172,9 @@ describe("GalaxyWorkspace book entry guard", () => {
       }),
     );
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-bookmaker");
-    expect(screen.getByText("家书工坊已准备好，下一步将从真实来源创建")).toBeInTheDocument();
+    expect(screen.getByText("从真实来源写成家书")).toBeInTheDocument();
     expect(screen.queryByText("我们家的第一个新房除夕")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "生成家书草稿" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "生成这本家书" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "分享前确认" })).not.toBeInTheDocument();
-    expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain("/api/books/generate");
   });
 });

@@ -93,6 +93,51 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     expect(screen.queryByText("那年第一次在新房里过年。妈妈忙了一整天，最后在客厅拍了一张合照。")).not.toBeInTheDocument();
   });
 
+  it("authorizes a newly confirmed allowBook memory for a same-session resonance book", async () => {
+    const existingMemory = {
+      id: "memory-2", planetId: "planet-self", title: "另一颗已授权记忆星", occurredAt: "2018 年除夕",
+      location: "新房", people: ["我"], emotions: [], visibility: "family" as const, summary: "已有真实来源。",
+    };
+    const candidate = {
+      id: "resonance-1", sourceMemoryId: "memory-1", targetMemoryId: "memory-2", score: 0.91,
+      reason: "两条真实记忆指向同一次团圆。", version: 1, status: "candidate",
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "completed" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(review), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...review, status: "confirmed", version: 4 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ candidates: [candidate] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...candidate, status: "confirmed", version: 2 }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={persistedPlanets}
+        initialLinks={[]}
+        initialConfirmedMemories={[existingMemory]}
+        initialEligibleBookSources={[{ id: existingMemory.id, title: existingMemory.title }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮为记忆星" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "确认点亮记忆星" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "沿共鸣星轨前进" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "共鸣候选：除夕合照 ↔ 另一颗已授权记忆星" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "共鸣候选：除夕合照 ↔ 另一颗已授权记忆星" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "确认这条星轨" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "确认这条星轨" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "进入家书工坊" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "进入家书工坊" }));
+
+    expect(screen.getByRole("button", { name: "生成这本家书" })).toBeInTheDocument();
+    expect(screen.getByText("除夕合照")).toBeInTheDocument();
+  });
+
   it("replays a transport-lost draft POST with the same idempotency key instead of creating a new logical draft", async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new TypeError("响应在提交后丢失"))

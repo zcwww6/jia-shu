@@ -16,6 +16,8 @@ export default async function GalaxyPage() {
     <GalaxyWorkspace
       initialArchivedPlanets={homeData.archivedPlanets}
       initialConfirmedMemories={homeData.confirmedMemories}
+      initialEligibleBookSources={homeData.eligibleBookSources}
+      initialGrowingBooks={homeData.growingBooks}
       initialLinks={homeData.relationships}
       initialPendingResonances={homeData.pendingResonances}
       initialPlanets={homeData.planets}

@@ -15,8 +15,6 @@ const shareKey = "jiashu-demo-share";
 
 // 星系内闭环专用 key，与独立路由页（demo-loop）的 key 区分，避免互相覆盖。
 const galaxyExtractKey = "jiashu-galaxy-extract";
-const galaxyBookKey = "jiashu-galaxy-book";
-const galaxyShareKey = "jiashu-galaxy-share";
 const galaxyLitMemoriesKey = "jiashu-galaxy-lit-memories";
 
 function readJson<T>(key: string): T | null {
@@ -77,22 +75,6 @@ export function readGalaxyExtractResult() {
 
 export function writeGalaxyExtractResult(value: MemoryExtractResponse) {
   writeJson(galaxyExtractKey, value);
-}
-
-export function readGalaxyBookResult() {
-  return readJson<BookGenerateResponse>(galaxyBookKey);
-}
-
-export function writeGalaxyBookResult(value: BookGenerateResponse) {
-  writeJson(galaxyBookKey, value);
-}
-
-export function readGalaxySharePayload() {
-  return readJson<ShareConfirmationPayload>(galaxyShareKey);
-}
-
-export function writeGalaxySharePayload(value: ShareConfirmationPayload) {
-  writeJson(galaxyShareKey, value);
 }
 
 export function readLitMemories() {
