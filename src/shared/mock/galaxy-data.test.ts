@@ -24,6 +24,7 @@ describe("galaxy mock data", () => {
   });
 
   it("routes the legacy resonance and book zones into the guarded galaxy workspace", () => {
+    expect(galaxyZones.find((zone) => zone.key === "privacy")?.href).toBe("/galaxy");
     expect(galaxyZones.find((zone) => zone.key === "resonance")?.href).toBe("/galaxy");
     expect(galaxyZones.find((zone) => zone.key === "books")?.href).toBe("/galaxy");
   });

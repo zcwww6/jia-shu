@@ -8,22 +8,23 @@ const { redirect } = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ redirect }));
 
-import NewBookPage from "./page";
+import PrivacyPage from "./page";
 
-describe("NewBookPage", () => {
+describe("PrivacyPage", () => {
   afterEach(() => {
     localStorage.clear();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it("redirects even with a legacy resonance cache, without reading storage or requesting a book", () => {
-    localStorage.setItem("jiashu-demo-resonance", JSON.stringify({ candidates: [{ id: "legacy" }] }));
+  it("redirects legacy privacy links to Galaxy without reading legacy book or share caches", () => {
+    localStorage.setItem("jiashu-demo-book", JSON.stringify({ title: "不应恢复的旧家书" }));
+    localStorage.setItem("jiashu-demo-share", JSON.stringify({ showBody: true }));
     const readLocalStorage = vi.spyOn(Storage.prototype, "getItem");
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(() => NewBookPage()).toThrow("REDIRECT:/galaxy");
+    expect(() => PrivacyPage()).toThrow("REDIRECT:/galaxy");
     expect(redirect).toHaveBeenCalledWith("/galaxy");
     expect(readLocalStorage).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();

@@ -52,7 +52,6 @@ describe("getHomeData", () => {
       relationships: [],
       pendingResonances: [],
       growingBooks: [],
-      eligibleBookSources: [],
       confirmedMemories: [],
     });
   });
@@ -147,15 +146,6 @@ describe("getHomeData", () => {
     expect(positions).toHaveLength(10);
     expect(new Set(positions.map(({ x, y }) => `${x},${y}`)).size).toBe(10);
     expect(positions.every(({ x, y }) => x >= 12 && x <= 88 && y >= 12 && y <= 88)).toBe(true);
-  });
-
-  it("projects only confirmed memories that explicitly allow book creation", async () => {
-    const result = await getHomeData("user_1", { findHomePlanets: vi.fn().mockResolvedValue([homePlanet({ memories: [
-      { id: "allowed", title: "团圆饭", allowBook: true, resonanceSources: [], resonanceTargets: [], bookMemories: [] },
-      { id: "private", title: "不写入", allowBook: false, resonanceSources: [], resonanceTargets: [], bookMemories: [] },
-    ] })]) });
-
-    expect(result.eligibleBookSources).toEqual([{ id: "allowed", title: "团圆饭" }]);
   });
 
   it("maps persisted values and aggregates confirmed memories, resonances, and active book links", async () => {

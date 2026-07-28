@@ -194,9 +194,19 @@ type GrowingBookSummary = {
   memoryCount: number;
 };
 
-type EligibleBookSource = { id: string; title: string | null };
-
 type ActiveLegacyBook = Omit<LegacyBookDetail, "sourceLabels"> & { sourceLabels: string[] };
+
+type BookOperation = {
+  bookId: string | null;
+  generation: number;
+  requestId: number;
+};
+
+function isExpiredIdempotencyError(error: unknown): error is LegacyBookApiError {
+  return error instanceof LegacyBookApiError
+    && error.status === 409
+    && error.code === "IDEMPOTENCY_EXPIRED";
+}
 
 const themeTemplateKeyByLabel: Record<string, string> = {
   "家庭团圆": "family_reunion",
@@ -439,7 +449,6 @@ export function GalaxyWorkspace({
   initialConfirmedMemories?: MemoryStar[];
   initialPendingResonances?: LegacyPendingResonance[];
   initialGrowingBooks?: GrowingBookSummary[];
-  initialEligibleBookSources?: EligibleBookSource[];
 }) {
   const startingPlanets = initialPlanets ?? [];
   const [activeZone, setActiveZone] = useState<GalaxyZoneKey>("galaxy");
@@ -484,6 +493,7 @@ export function GalaxyWorkspace({
   const bookGenerationRequestRef = useRef<{ key: string; signature: string } | null>(null);
   const bookShareRequestRef = useRef<{ key: string; signature: string } | null>(null);
   const bookShareRevokeRequestRef = useRef(new Map<string, string>());
+  const bookOperationRef = useRef<BookOperation>({ bookId: null, generation: 0, requestId: 0 });
 
   const [quickRecordContent, setQuickRecordContent] = useState(
     "2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。",
@@ -700,6 +710,29 @@ export function GalaxyWorkspace({
     return key;
   }
 
+  function beginBookOperation(bookId: string | null) {
+    const current = bookOperationRef.current;
+    const operation = {
+      bookId,
+      generation: current.generation + 1,
+      requestId: current.requestId + 1,
+    };
+    bookOperationRef.current = operation;
+    return operation;
+  }
+
+  function currentBookOperation(bookId: string) {
+    const operation = bookOperationRef.current;
+    return operation.bookId === bookId ? operation : null;
+  }
+
+  function isCurrentBookOperation(operation: BookOperation) {
+    const current = bookOperationRef.current;
+    return current.bookId === operation.bookId
+      && current.generation === operation.generation
+      && current.requestId === operation.requestId;
+  }
+
   function applyActiveBook(book: LegacyBookDetail, sourceLabels: string[]) {
     setActiveBook({ ...book, sourceLabels });
     setBookTitleDraft(book.title);
@@ -707,32 +740,38 @@ export function GalaxyWorkspace({
     setBookVisibility(book.visibility);
   }
 
-  async function loadActiveBookShares(bookId: string) {
+  async function loadActiveBookShares(bookId: string, operation: BookOperation) {
     try {
       const result = await listLegacyBookShares(bookId);
-      setBookShares(result.shares);
+      if (isCurrentBookOperation(operation)) setBookShares(result.shares);
     } catch (error) {
-      setShareError(errorMessage(error));
+      if (isCurrentBookOperation(operation)) setShareError(errorMessage(error));
     }
   }
 
   async function openSavedBook(bookId: string, knownSourceLabels: string[] = []) {
+    const operation = beginBookOperation(bookId);
     setBookLoading(true);
+    setShareLoading(false);
     setBookError(null);
     setBookSaveError(null);
     setBookShares([]);
     setShareError(null);
+    setActiveBook(null);
+    setBookTitleDraft("");
+    setBookBodyDraft("");
     try {
       const book = await getLegacyBook(bookId);
+      if (!isCurrentBookOperation(operation)) return;
       const sourceLabels = knownSourceLabels.length > 0
         ? knownSourceLabels
         : Object.values(book.sourceLabels);
       applyActiveBook(book, sourceLabels);
-      await loadActiveBookShares(bookId);
+      await loadActiveBookShares(bookId, operation);
     } catch (error) {
-      setBookError(errorMessage(error));
+      if (isCurrentBookOperation(operation)) setBookError(errorMessage(error));
     } finally {
-      setBookLoading(false);
+      if (isCurrentBookOperation(operation)) setBookLoading(false);
     }
   }
 
@@ -755,12 +794,14 @@ export function GalaxyWorkspace({
       visibility: bookVisibility,
     };
     const requestKey = bookGenerationRequestKey(JSON.stringify(input));
+    const operation = beginBookOperation(null);
 
     setBookLoading(true);
     setBookError(null);
     setBookSaveError(null);
     try {
       const created = await createLegacyBook(input, requestKey);
+      if (!isCurrentBookOperation(operation)) return;
       const sourceLabels = created.draft.sourceMemoryIds.map((id) => (
         created.draft.sourceLabels?.[id]
         ?? confirmedBookSources.find((source) => source.id === id)?.title
@@ -785,9 +826,17 @@ export function GalaxyWorkspace({
       });
       await openSavedBook(created.id, sourceLabels);
     } catch (error) {
+      if (!isCurrentBookOperation(operation)) return;
+      if (isExpiredIdempotencyError(error)) {
+        if (bookGenerationRequestRef.current?.key === requestKey) {
+          bookGenerationRequestRef.current = null;
+        }
+        setBookError(`${errorMessage(error)}，请刷新后重试。`);
+        return;
+      }
       setBookError(errorMessage(error));
     } finally {
-      setBookLoading(false);
+      if (isCurrentBookOperation(operation)) setBookLoading(false);
     }
   }
 
@@ -796,6 +845,8 @@ export function GalaxyWorkspace({
       setBookSaveError("家书详情尚未加载完成，请刷新后重试。");
       return;
     }
+    const operation = currentBookOperation(activeBook.id);
+    if (!operation) return;
 
     setBookLoading(true);
     setBookSaveError(null);
@@ -805,6 +856,7 @@ export function GalaxyWorkspace({
         title: bookTitleDraft,
         body: bookBodyDraft,
       });
+      if (!isCurrentBookOperation(operation)) return;
       setActiveBook((current) => current && current.id === updated.id
         ? { ...current, ...updated }
         : current);
@@ -815,11 +867,12 @@ export function GalaxyWorkspace({
       setBookBodyDraft(updated.body);
       setToast("家书修改已保存");
     } catch (error) {
+      if (!isCurrentBookOperation(operation)) return;
       const message = errorMessage(error);
       const versionConflict = error instanceof LegacyBookApiError && error.status === 409;
       setBookSaveError(versionConflict || /版本|conflict/i.test(message) ? `${message}，刷新后重试` : message);
     } finally {
-      setBookLoading(false);
+      if (isCurrentBookOperation(operation)) setBookLoading(false);
     }
   }
 
@@ -828,35 +881,58 @@ export function GalaxyWorkspace({
       setShareError("请先打开一封真实已保存家书，再创建分享链接。");
       return;
     }
+    const operation = currentBookOperation(activeBook.id);
+    if (!operation) return;
 
     const requestKey = bookShareRequestKey(JSON.stringify({ bookId: activeBook.id, ...shareOptions }));
     setShareLoading(true);
     setShareError(null);
     try {
       const share = await createLegacyBookShare(activeBook.id, shareOptions, requestKey);
+      if (!isCurrentBookOperation(operation)) return;
       setBookShares((current) => [share, ...current.filter((item) => item.token !== share.token)]);
       bookShareRequestRef.current = null;
     } catch (error) {
+      if (!isCurrentBookOperation(operation)) return;
+      if (isExpiredIdempotencyError(error)) {
+        if (bookShareRequestRef.current?.key === requestKey) {
+          bookShareRequestRef.current = null;
+        }
+        setShareError(`${errorMessage(error)}，请刷新后重试。`);
+        return;
+      }
       setShareError(errorMessage(error));
     } finally {
-      setShareLoading(false);
+      if (isCurrentBookOperation(operation)) setShareLoading(false);
     }
   }
 
   async function revokeActiveBookShare(token: string) {
     if (!activeBook) return;
+    const operation = currentBookOperation(activeBook.id);
+    if (!operation) return;
+    const requestSignature = `${activeBook.id}:${token}`;
+    const requestKey = bookShareRevokeRequestKey(activeBook.id, token);
 
     setShareLoading(true);
     setShareError(null);
     try {
-      await revokeLegacyBookShare(activeBook.id, token, bookShareRevokeRequestKey(activeBook.id, token));
+      await revokeLegacyBookShare(activeBook.id, token, requestKey);
+      if (!isCurrentBookOperation(operation)) return;
       setBookShares((current) => current.filter((share) => share.token !== token));
-      bookShareRequestRef.current = null;
-      bookShareRevokeRequestRef.current.delete(`${activeBook.id}:${token}`);
+      bookShareRevokeRequestRef.current.delete(requestSignature);
     } catch (error) {
+      if (!isCurrentBookOperation(operation)) return;
+      if (isExpiredIdempotencyError(error)) {
+        if (bookShareRevokeRequestRef.current.get(requestSignature) === requestKey) {
+          bookShareRevokeRequestRef.current.delete(requestSignature);
+        }
+        setShareError(`${errorMessage(error)}，请刷新后重试。`);
+        return;
+      }
       setShareError(errorMessage(error));
     } finally {
-      setShareLoading(false);
+      if (isCurrentBookOperation(operation)) setShareLoading(false);
     }
   }
 

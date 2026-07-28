@@ -18,7 +18,7 @@ export const galaxyZones: GalaxyZone[] = [
   {
     key: "privacy",
     label: "隐私星域",
-    href: "/settings/privacy",
+    href: "/galaxy",
     description: "私密核心、家庭可见和公开分享边界。",
   },
   {

@@ -1,5 +1,5 @@
-import { PrivacyClientPage } from "@/features/demo-loop/privacy-client-page";
+import { redirect } from "next/navigation";
 
 export default function PrivacyPage() {
-  return <PrivacyClientPage />;
+  redirect("/galaxy");
 }

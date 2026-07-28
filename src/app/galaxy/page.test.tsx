@@ -122,10 +122,6 @@ describe("GalaxyPage", () => {
           memoryCount: 2,
         },
       ],
-      eligibleBookSources: [
-        { id: "server-memory-1", title: "服务端确认的除夕" },
-        { id: "server-memory-2", title: "服务端确认的团圆" },
-      ],
     });
 
     render(await GalaxyPage());

@@ -89,8 +89,6 @@ export type GrowingBookSummary = {
   memoryCount: number;
 };
 
-export type EligibleBookSource = { id: string; title: string | null };
-
 export type GalaxyReadModel = {
   planets: Planet[];
   archivedPlanets: Planet[];
@@ -98,7 +96,6 @@ export type GalaxyReadModel = {
   relationships: PlanetLink[];
   pendingResonances: PendingResonanceReadModel[];
   growingBooks: GrowingBookSummary[];
-  eligibleBookSources: EligibleBookSource[];
 };
 
 export interface HomeServiceDeps {
@@ -148,7 +145,6 @@ export async function getHomeData(
     relationships: mapRelationships(homePlanets, activePlanetIds),
     pendingResonances: mapPendingResonances(homePlanets),
     growingBooks: mapGrowingBooks(homePlanets),
-    eligibleBookSources: mapEligibleBookSources(homePlanets),
   };
 }
 
@@ -427,10 +423,4 @@ function mapGrowingBooks(planets: HomePlanetRecord[]): GrowingBookSummary[] {
   }
 
   return [...books.values()];
-}
-
-function mapEligibleBookSources(planets: HomePlanetRecord[]): EligibleBookSource[] {
-  return planets.flatMap((planet) => planet.memories)
-    .filter((memory) => memory.allowBook === true)
-    .map((memory) => ({ id: memory.id, title: memory.title ?? null }));
 }

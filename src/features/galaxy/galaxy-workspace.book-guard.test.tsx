@@ -146,10 +146,6 @@ describe("GalaxyWorkspace book entry guard", () => {
             reason: "两条真实记忆指向同一次团圆。", version: 1,
           },
         ]}
-        initialEligibleBookSources={[
-          { id: "memory-1", title: "妈妈的真实除夕" },
-          { id: "memory-2", title: "我的真实除夕" },
-        ]}
       />,
     );
 

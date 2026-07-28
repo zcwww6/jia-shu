@@ -1,17 +1,13 @@
 "use client";
 
 import type {
-  BookGenerateResponse,
   MemoryExtractResponse,
   MemoryStar,
   ResonanceScanResponse,
-  ShareConfirmationPayload,
 } from "@/shared/types/galaxy";
 
 const extractKey = "jiashu-demo-extract";
 const resonanceKey = "jiashu-demo-resonance";
-const bookKey = "jiashu-demo-book";
-const shareKey = "jiashu-demo-share";
 
 // 星系内闭环专用 key，与独立路由页（demo-loop）的 key 区分，避免互相覆盖。
 const galaxyExtractKey = "jiashu-galaxy-extract";
@@ -49,22 +45,6 @@ export function readResonanceResult() {
 
 export function writeResonanceResult(value: ResonanceScanResponse) {
   writeJson(resonanceKey, value);
-}
-
-export function readBookResult() {
-  return readJson<BookGenerateResponse>(bookKey);
-}
-
-export function writeBookResult(value: BookGenerateResponse) {
-  writeJson(bookKey, value);
-}
-
-export function readSharePayload() {
-  return readJson<ShareConfirmationPayload>(shareKey);
-}
-
-export function writeSharePayload(value: ShareConfirmationPayload) {
-  writeJson(shareKey, value);
 }
 
 // ---- 星系内闭环（galaxy-workspace）专用存取 ----

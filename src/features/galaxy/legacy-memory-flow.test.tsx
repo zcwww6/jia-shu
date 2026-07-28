@@ -117,7 +117,6 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
         initialPlanets={persistedPlanets}
         initialLinks={[]}
         initialConfirmedMemories={[existingMemory]}
-        initialEligibleBookSources={[{ id: existingMemory.id, title: existingMemory.title }]}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈漫游" }));
