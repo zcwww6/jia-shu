@@ -297,6 +297,12 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     submitTextMemory();
     await waitFor(() => expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "确认点亮记忆星" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/memories",
+      expect.objectContaining({
+        body: expect.stringContaining('"allowBook":true'),
+      }),
+    );
     await waitFor(() => expect(screen.getByRole("button", { name: "沿共鸣星轨前进" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "共鸣候选：除夕合照 ↔ 另一颗已授权记忆星" })).toBeInTheDocument());
@@ -307,7 +313,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "进入家书工坊" }));
 
     expect(screen.getByRole("button", { name: "生成这本家书" })).toBeInTheDocument();
-    expect(screen.getByText("除夕合照")).toBeInTheDocument();
+    expect(screen.getByText("2 段已确认共鸣记忆")).toBeInTheDocument();
   });
 
   it("replays a transport-lost draft POST with the same idempotency key instead of creating a new logical draft", async () => {
@@ -531,6 +537,8 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     ));
 
     fireEvent.change(screen.getByLabelText("星域"), { target: { value: "memories" } });
+    expect(screen.queryByRole("button", { name: "点亮记忆星" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("星域"), { target: { value: "galaxy" } });
     fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
 
     const primaryAction = screen.getByRole("button", { name: "继续整理" });

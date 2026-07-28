@@ -168,7 +168,7 @@ describe("GalaxyWorkspace book entry guard", () => {
       }),
     );
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-bookmaker");
-    expect(screen.getByText("从真实来源写成家书")).toBeInTheDocument();
+    expect(screen.getByText("家书工坊 · 家庭书架")).toBeInTheDocument();
     expect(screen.queryByText("我们家的第一个新房除夕")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成这本家书" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "分享前确认" })).not.toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { getSharedBook } = vi.hoisted(() => ({ getSharedBook: vi.fn() }));
@@ -42,11 +42,20 @@ describe("/share/[token] 分享页", () => {
     });
     render(element);
 
-    expect(screen.getByText("我们家的第一个新房除夕")).toBeInTheDocument();
+    const openingSpread = screen.getByTestId("visible-family-book-spread");
+    expect(within(openingSpread).getByRole("heading", { name: "我们家的第一个新房除夕" })).toBeInTheDocument();
     expect(screen.getByLabelText("家书纪念册预览")).toBeInTheDocument();
-    expect(screen.getByText("共同记住的一天")).toBeInTheDocument();
-    expect(screen.getByText("来自妈妈的视角")).toBeInTheDocument();
-    expect(screen.getByText("来源 · memory-1")).toBeInTheDocument();
+    expect(openingSpread).toHaveAttribute("data-spread-index", "0");
+
+    fireEvent.click(screen.getByRole("button", { name: "下一组双页" }));
+    await waitFor(() => expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "1"));
+    const firstChapterSpread = screen.getByTestId("visible-family-book-spread");
+    expect(within(firstChapterSpread).getByText("共同记住的一天")).toBeInTheDocument();
+    expect(within(firstChapterSpread).getByText("来源 · memory-1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一组双页" }));
+    await waitFor(() => expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "2"));
+    expect(within(screen.getByTestId("visible-family-book-spread")).getByText("来自妈妈的视角")).toBeInTheDocument();
     // 原始全文默认关闭，不应展示
     expect(screen.queryByText("原始生成全文内容。")).not.toBeInTheDocument();
   });

@@ -108,11 +108,23 @@ async function enterConfirmedBookWorkshop() {
 
 async function openSavedBook() {
   fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-  fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+  selectSavedBook(savedBook);
   await waitForBookBody(savedBookDetail.body);
 }
 
+function selectSavedBook(book: typeof savedBook) {
+  const label = `打开已保存家书：${book.title}`;
+  if (!screen.queryByRole("button", { name: label })) {
+    fireEvent.click(screen.getByRole("button", { name: "返回书架" }));
+  }
+  fireEvent.click(screen.getByRole("button", { name: label }));
+}
+
 async function waitForBookBody(body: string) {
+  await waitFor(() => expect(screen.getByRole("button", { name: "编辑此书" })).toBeInTheDocument());
+  if (!screen.queryByLabelText("家书正文")) {
+    fireEvent.click(screen.getByRole("button", { name: "编辑此书" }));
+  }
   await waitFor(() => expect(screen.getByLabelText("家书正文")).toHaveValue(body));
 }
 
@@ -199,13 +211,39 @@ describe("GalaxyWorkspace persisted book flow", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    selectSavedBook(savedBook);
 
     await waitForBookBody(savedBookDetail.body);
     expect(fetchMock).toHaveBeenCalledWith(`/api/books/${savedBook.id}`, { method: "GET" });
     expect(screen.getByText("妈妈的真实除夕")).toBeInTheDocument();
     expect(screen.queryByText("不应恢复的本地 Mock 家书")).not.toBeInTheDocument();
     expect(screen.queryByText("不应恢复的已退役家书")).not.toBeInTheDocument();
+  });
+
+  it("opens a saved book for reading before revealing its edit and share controls", async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === `/api/books/${savedBook.id}`) {
+        return new Response(JSON.stringify(savedBookDetail), { status: 200 });
+      }
+      if (url === `/api/books/${savedBook.id}/shares`) {
+        return new Response(JSON.stringify({ shares: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `unexpected ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} initialGrowingBooks={[savedBook]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
+    selectSavedBook(savedBook);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑此书" })).toBeInTheDocument());
+    expect(screen.getByLabelText("家书纪念册预览")).toBeInTheDocument();
+    expect(screen.queryByLabelText("家书标题")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建分享链接" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑此书" }));
+    await waitFor(() => expect(screen.getByLabelText("家书正文")).toHaveValue(savedBookDetail.body));
+    expect(screen.getByRole("button", { name: "创建分享链接" })).toBeEnabled();
   });
 
   it("keeps B open when A detail resolves after the user has selected B", async () => {
@@ -227,8 +265,8 @@ describe("GalaxyWorkspace persisted book flow", () => {
     render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} initialGrowingBooks={[savedBook, secondSavedBook]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(savedBook);
+    selectSavedBook(secondSavedBook);
     await waitForBookBody(secondSavedBookDetail.body);
 
     await act(async () => {
@@ -261,9 +299,9 @@ describe("GalaxyWorkspace persisted book flow", () => {
     render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} initialGrowingBooks={[savedBook, secondSavedBook]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    selectSavedBook(savedBook);
     await waitForBookBody(savedBookDetail.body);
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(secondSavedBook);
     await waitForBookBody(secondSavedBookDetail.body);
 
     await act(async () => {
@@ -301,12 +339,12 @@ describe("GalaxyWorkspace persisted book flow", () => {
     render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} initialGrowingBooks={[savedBook, secondSavedBook]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    selectSavedBook(savedBook);
     await waitForBookBody(savedBookDetail.body);
     fireEvent.change(screen.getByLabelText("家书标题"), { target: { value: "A 的迟到保存" } });
     fireEvent.click(screen.getByRole("button", { name: "保存家书修改" }));
     fireEvent.click(screen.getByRole("button", { name: "创建分享链接" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(secondSavedBook);
     await waitForBookBody(secondSavedBookDetail.body);
 
     await act(async () => {
@@ -320,10 +358,10 @@ describe("GalaxyWorkspace persisted book flow", () => {
     expect(screen.getByText("/share/b-share")).toBeInTheDocument();
     expect(screen.queryByText("/share/a-new-share")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    selectSavedBook(savedBook);
     await waitForBookBody(savedBookDetail.body);
     fireEvent.click(screen.getByRole("button", { name: "撤回分享：a-share" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(secondSavedBook);
     await waitForBookBody(secondSavedBookDetail.body);
     expect(screen.getByRole("button", { name: "创建分享链接" })).toBeEnabled();
 
@@ -372,10 +410,10 @@ describe("GalaxyWorkspace persisted book flow", () => {
     render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} initialGrowingBooks={[savedBook, secondSavedBook]} />);
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    selectSavedBook(savedBook);
     await waitForBookBody(savedBookDetail.body);
     fireEvent.click(screen.getByRole("button", { name: "创建分享链接" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(secondSavedBook);
     await waitForBookBody(secondSavedBookDetail.body);
 
     await act(async () => {
@@ -390,13 +428,13 @@ describe("GalaxyWorkspace persisted book flow", () => {
     expect(screen.getByText("/share/b-share")).toBeInTheDocument();
     expect(screen.queryByText(/A 创建分享请求已过期/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    selectSavedBook(savedBook);
     await waitForBookBody(savedBookDetail.body);
     fireEvent.click(screen.getByRole("button", { name: "创建分享链接" }));
     await waitFor(() => expect(screen.getByText("/share/a-new-share")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "撤回分享：a-share" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(secondSavedBook);
     await waitForBookBody(secondSavedBookDetail.body);
     await act(async () => {
       expiredRevoke.resolve(new Response(JSON.stringify({
@@ -410,7 +448,7 @@ describe("GalaxyWorkspace persisted book flow", () => {
     expect(screen.getByText("/share/b-share")).toBeInTheDocument();
     expect(screen.queryByText(/A 撤回分享请求已过期/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    selectSavedBook(savedBook);
     await waitForBookBody(savedBookDetail.body);
     fireEvent.click(screen.getByRole("button", { name: "撤回分享：a-share" }));
     await waitFor(() => expect(screen.queryByText("/share/a-share")).not.toBeInTheDocument());
@@ -464,7 +502,7 @@ describe("GalaxyWorkspace persisted book flow", () => {
 
     await enterConfirmedBookWorkshop();
     fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(secondSavedBook);
     await waitForBookBody(secondSavedBookDetail.body);
 
     await act(async () => {
@@ -480,7 +518,7 @@ describe("GalaxyWorkspace persisted book flow", () => {
     expect(screen.getByText("/share/b-share")).toBeInTheDocument();
     expect(screen.queryByText(/A 生成请求已过期/)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    selectSavedBook(secondSavedBook);
     await waitFor(() => expect(screen.getByText("返回生成流程")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
     await waitFor(() => expect(screen.getByText("重新进入生成流程")).toBeInTheDocument());

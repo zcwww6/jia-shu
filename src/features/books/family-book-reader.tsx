@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { BookOpenText, Download, ImageIcon, LoaderCircle, Music2, Quote } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { BookOpenText, ChevronLeft, ChevronRight, Download, ImageIcon, LoaderCircle, Music2, Quote } from "lucide-react";
 
 import type { FamilyBookMedia, FamilyBookSection } from "@/shared/types/family-book";
 
@@ -26,16 +27,18 @@ export function FamilyBookReader({
   sourceLabels,
   title,
 }: FamilyBookReaderProps) {
-  const bookRef = useRef<HTMLElement>(null);
+  const exportBookRef = useRef<HTMLElement>(null);
   const [exportState, setExportState] = useState<"idle" | "exporting" | "failed">("idle");
+  const [activeSpread, setActiveSpread] = useState(0);
   const imageMedia = media.filter((item) => item.kind === "image");
   const audioMedia = media.filter((item) => item.kind === "audio");
   const narrativeSections = sections.length > 0
     ? sections
     : [{ title: "写给未来的我们", body, sourceMemoryIds: [] }];
+  const spreadCount = narrativeSections.length + 2;
 
   async function exportKeepsakePdf() {
-    const book = bookRef.current;
+    const book = exportBookRef.current;
     if (!book || exportState === "exporting") return;
 
     setExportState("exporting");
@@ -76,75 +79,156 @@ export function FamilyBookReader({
     <section className={[styles.stage, className].filter(Boolean).join(" ")}>
       <div className={styles.toolbar} data-html2canvas-ignore="true">
         <p><BookOpenText aria-hidden="true" size={16} /> 家书纪念册 · 已保存版本</p>
-        <button
-          aria-label="下载 PDF 纪念册"
-          className={styles.exportButton}
-          disabled={exportState === "exporting"}
-          onClick={() => void exportKeepsakePdf()}
-          type="button"
-        >
-          {exportState === "exporting" ? <LoaderCircle aria-hidden="true" className={styles.spinning} size={17} /> : <Download aria-hidden="true" size={17} />}
-          {exportState === "exporting" ? "正在装订 PDF…" : "下载 PDF 纪念册"}
-        </button>
+        <div className={styles.toolbarActions}>
+          <span aria-live="polite" className={styles.pageIndicator}>第 {activeSpread + 1} / {spreadCount} 跨页</span>
+          <button
+            aria-label="下载 PDF 纪念册"
+            className={styles.exportButton}
+            disabled={exportState === "exporting"}
+            onClick={() => void exportKeepsakePdf()}
+            type="button"
+          >
+            {exportState === "exporting" ? <LoaderCircle aria-hidden="true" className={styles.spinning} size={17} /> : <Download aria-hidden="true" size={17} />}
+            {exportState === "exporting" ? "正在装订 PDF…" : "下载 PDF 纪念册"}
+          </button>
+        </div>
       </div>
       {exportState === "failed" ? <p className={styles.exportError} role="alert">PDF 导出暂未完成，请确认图片加载完成后重试。</p> : null}
 
-      <article aria-label="家书纪念册预览" className={styles.book} ref={bookRef}>
-        <div className={[styles.spread, styles.openingSpread].join(" ")} data-family-book-spread>
-          <section className={[styles.page, styles.coverPage].join(" ")}>
-            <span className={styles.coverEyebrow}>家书星球 · 家庭私藏</span>
-            <div className={styles.coverOrbit} aria-hidden="true"><i /><i /><i /></div>
-            <h1>{title}</h1>
-            <p>留给未来的家人</p>
-          </section>
-          <section className={[styles.page, styles.insideCover].join(" ")}>
-            <span className={styles.pageNumber}>序 · 01</span>
-            <Quote aria-hidden="true" className={styles.quoteMark} size={34} />
-            <p className={styles.intro}>{intro}</p>
-            <div className={styles.insideRule} />
-            <p className={styles.insideNote}>翻开的不是纸页，是我们曾经一起走过的日子。</p>
-          </section>
-        </div>
-
-        {narrativeSections.map((section, index) => {
-          const image = imageMedia[index % imageMedia.length];
-          const audio = audioMedia[index % audioMedia.length];
-          const isImageOnLeft = index % 2 === 0;
-          return (
-            <div className={styles.spread} data-family-book-spread key={`${section.title}-${index}`}>
-              <BookNarrativePage
-                audio={audio}
-                image={isImageOnLeft ? image : undefined}
-                index={index}
-                section={section}
-                sourceLabels={sourceLabels}
-              />
-              <BookNarrativePage
-                audio={isImageOnLeft ? undefined : audio}
-                image={isImageOnLeft ? undefined : image}
-                index={index}
-                section={section}
-                sourceLabels={sourceLabels}
-                continuation
-              />
-            </div>
-          );
-        })}
-
-        <div className={[styles.spread, styles.closingSpread].join(" ")} data-family-book-spread>
-          <section className={[styles.page, styles.letterPage].join(" ")}>
-            <span className={styles.pageNumber}>附言</span>
-            <p className={styles.letterLabel}>写给未来的我们</p>
-            <p className={styles.letterBody}>{body}</p>
-          </section>
-          <section className={[styles.page, styles.lastPage].join(" ")}>
-            <div className={styles.lastPageEmblem} aria-hidden="true"><span /><span /><span /></div>
-            <p>愿灯火一直在</p>
-            <small>家书星球 · 为每一次回望留一颗星</small>
-          </section>
+      <article aria-label="家书纪念册预览" className={styles.book}>
+        <AnimatePresence initial={false} mode="wait">
+          <motion.div
+            animate={{ opacity: 1, rotateY: 0, x: 0 }}
+            className={styles.turningSpread}
+            exit={{ opacity: 0, rotateY: -7, x: -18 }}
+            initial={{ opacity: 0, rotateY: 8, x: 18 }}
+            key={activeSpread}
+            transition={{ duration: 0.34, ease: [0.2, 0.8, 0.2, 1] }}
+          >
+            <BookSpread
+              body={body}
+              imageMedia={imageMedia}
+              index={activeSpread}
+              intro={intro}
+              narrativeSections={narrativeSections}
+              sourceLabels={sourceLabels}
+              title={title}
+              audioMedia={audioMedia}
+              testId="visible-family-book-spread"
+            />
+          </motion.div>
+        </AnimatePresence>
+        <div className={styles.readerControls} data-html2canvas-ignore="true">
+          <button aria-label="上一组双页" className={styles.turnButton} disabled={activeSpread === 0} onClick={() => setActiveSpread((current) => Math.max(0, current - 1))} type="button">
+            <ChevronLeft aria-hidden="true" size={18} /> 上一组
+          </button>
+          <span>每次只展开一组双页</span>
+          <button aria-label="下一组双页" className={styles.turnButton} disabled={activeSpread === spreadCount - 1} onClick={() => setActiveSpread((current) => Math.min(spreadCount - 1, current + 1))} type="button">
+            下一组 <ChevronRight aria-hidden="true" size={18} />
+          </button>
         </div>
       </article>
+
+      <article aria-hidden="true" className={styles.exportBook} ref={exportBookRef}>
+        {Array.from({ length: spreadCount }, (_, index) => (
+          <BookSpread
+            audioMedia={audioMedia}
+            body={body}
+            imageMedia={imageMedia}
+            index={index}
+            intro={intro}
+            key={`export-spread-${index}`}
+            narrativeSections={narrativeSections}
+            sourceLabels={sourceLabels}
+            title={title}
+          />
+        ))}
+      </article>
     </section>
+  );
+}
+
+function BookSpread({
+  audioMedia,
+  body,
+  imageMedia,
+  index,
+  intro,
+  narrativeSections,
+  sourceLabels,
+  testId,
+  title,
+}: {
+  audioMedia: FamilyBookMedia[];
+  body: string;
+  imageMedia: FamilyBookMedia[];
+  index: number;
+  intro: string;
+  narrativeSections: FamilyBookSection[];
+  sourceLabels: Record<string, string>;
+  testId?: string;
+  title: string;
+}) {
+  if (index === 0) {
+    return (
+      <div className={[styles.spread, styles.openingSpread].join(" ")} data-family-book-spread data-spread-index={index} data-testid={testId}>
+        <section className={[styles.page, styles.coverPage].join(" ")}>
+          <span className={styles.coverEyebrow}>家书星球 · 家庭私藏</span>
+          <div className={styles.coverOrbit} aria-hidden="true"><i /><i /><i /></div>
+          <h1>{title}</h1>
+          <p>留给未来的家人</p>
+        </section>
+        <section className={[styles.page, styles.insideCover].join(" ")}>
+          <span className={styles.pageNumber}>序 · 01</span>
+          <Quote aria-hidden="true" className={styles.quoteMark} size={34} />
+          <p className={styles.intro}>{intro}</p>
+          <div className={styles.insideRule} />
+          <p className={styles.insideNote}>翻开的不是纸页，是我们曾经一起走过的日子。</p>
+        </section>
+      </div>
+    );
+  }
+
+  const narrativeIndex = index - 1;
+  if (narrativeIndex < narrativeSections.length) {
+    const section = narrativeSections[narrativeIndex]!;
+    const image = imageMedia[narrativeIndex % imageMedia.length];
+    const audio = audioMedia[narrativeIndex % audioMedia.length];
+    const isImageOnLeft = narrativeIndex % 2 === 0;
+    return (
+      <div className={styles.spread} data-family-book-spread data-spread-index={index} data-testid={testId}>
+        <BookNarrativePage
+          audio={audio}
+          image={isImageOnLeft ? image : undefined}
+          index={narrativeIndex}
+          section={section}
+          sourceLabels={sourceLabels}
+        />
+        <BookNarrativePage
+          audio={isImageOnLeft ? undefined : audio}
+          image={isImageOnLeft ? undefined : image}
+          index={narrativeIndex}
+          section={section}
+          sourceLabels={sourceLabels}
+          continuation
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={[styles.spread, styles.closingSpread].join(" ")} data-family-book-spread data-spread-index={index} data-testid={testId}>
+      <section className={[styles.page, styles.letterPage].join(" ")}>
+        <span className={styles.pageNumber}>附言</span>
+        <p className={styles.letterLabel}>写给未来的我们</p>
+        <p className={styles.letterBody}>{body}</p>
+      </section>
+      <section className={[styles.page, styles.lastPage].join(" ")}>
+        <div className={styles.lastPageEmblem} aria-hidden="true"><span /><span /><span /></div>
+        <p>愿灯火一直在</p>
+        <small>家书星球 · 为每一次回望留一颗星</small>
+      </section>
+    </div>
   );
 }
 
@@ -175,6 +259,7 @@ function BookNarrativePage({
       {image ? (
         <figure className={styles.photoFrame}>
           <ImageIcon aria-hidden="true" className={styles.photoGlyph} size={16} />
+          {/* eslint-disable-next-line @next/next/no-img-element -- authenticated memory assets use signed local API URLs. */}
           <img
             alt={`${image.title}：${image.caption}`}
             decoding="async"

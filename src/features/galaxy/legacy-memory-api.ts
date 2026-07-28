@@ -40,8 +40,8 @@ export type ConfirmLegacyMemoryInput = {
   title?: string;
   summary?: string;
   tags?: string[];
-  occurredAtLabel?: string | null;
-  locationLabel?: string | null;
+  occurredAtLabel?: string;
+  locationLabel?: string;
   people?: string[];
 };
 
@@ -89,13 +89,17 @@ export function getLegacyMemoryReview(memoryId: string) {
 }
 
 export function confirmLegacyMemory(input: ConfirmLegacyMemoryInput) {
-  const { memoryId, version, ...changes } = input;
+  const { memoryId, version, occurredAtLabel, locationLabel, ...changes } = input;
+  const optionalLabels = {
+    ...(occurredAtLabel?.trim() ? { occurredAtLabel: occurredAtLabel.trim() } : {}),
+    ...(locationLabel?.trim() ? { locationLabel: locationLabel.trim() } : {}),
+  };
   return requestJson<LegacyMemoryResponse>(`/api/memories/${memoryId}/confirm`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "If-Match-Version": String(version),
     },
-    body: JSON.stringify({ version, ...changes }),
+    body: JSON.stringify({ version, ...changes, ...optionalLabels }),
   });
 }

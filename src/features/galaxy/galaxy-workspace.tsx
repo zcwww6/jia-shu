@@ -575,6 +575,7 @@ export function GalaxyWorkspace({
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
   const [growingBooks, setGrowingBooks] = useState<GrowingBookSummary[]>(initialGrowingBooks);
   const [activeBook, setActiveBook] = useState<ActiveLegacyBook | null>(null);
+  const [bookEditorOpen, setBookEditorOpen] = useState(false);
   const [bookTitleDraft, setBookTitleDraft] = useState("");
   const [bookBodyDraft, setBookBodyDraft] = useState("");
   const [bookVisibility, setBookVisibility] = useState<LegacyBookVisibility>("family");
@@ -850,6 +851,7 @@ export function GalaxyWorkspace({
 
   function applyActiveBook(book: LegacyBookDetail, sourceLabelList: string[]) {
     setActiveBook({ ...book, sourceLabelList });
+    setBookEditorOpen(false);
     setBookTitleDraft(book.title);
     setBookBodyDraft(book.body);
     setBookVisibility(book.visibility);
@@ -873,6 +875,7 @@ export function GalaxyWorkspace({
     setBookShares([]);
     setShareError(null);
     setActiveBook(null);
+    setBookEditorOpen(false);
     setBookTitleDraft("");
     setBookBodyDraft("");
     try {
@@ -888,6 +891,20 @@ export function GalaxyWorkspace({
     } finally {
       if (isCurrentBookOperation(operation)) setBookLoading(false);
     }
+  }
+
+  function returnToBookShelf() {
+    const current = bookOperationRef.current;
+    bookOperationRef.current = {
+      bookId: null,
+      generation: current.generation + 1,
+      requestId: current.requestId + 1,
+    };
+    setActiveBook(null);
+    setBookEditorOpen(false);
+    setBookError(null);
+    setBookSaveError(null);
+    setShareError(null);
   }
 
   async function generateLegacyBook() {
@@ -1433,8 +1450,12 @@ export function GalaxyWorkspace({
         title: reviewTitle,
         summary: reviewSummary,
         tags: memoryReview.tags ?? [],
-        occurredAtLabel: memoryReview.occurredAtLabel,
-        locationLabel: memoryReview.locationLabel,
+        ...(memoryReview.occurredAtLabel?.trim()
+          ? { occurredAtLabel: memoryReview.occurredAtLabel.trim() }
+          : {}),
+        ...(memoryReview.locationLabel?.trim()
+          ? { locationLabel: memoryReview.locationLabel.trim() }
+          : {}),
         people: memoryReview.people ?? [],
       });
       const memory: MemoryStar = {
@@ -2211,7 +2232,6 @@ export function GalaxyWorkspace({
               bookSaveError={bookSaveError}
               bookShares={bookShares}
               bookTitleDraft={bookTitleDraft}
-              bookVisibility={bookVisibility}
               canCreateBook={
                 hasConfirmedResonance
                 && confirmedBookSources.length > 0
@@ -2223,11 +2243,14 @@ export function GalaxyWorkspace({
               onCreateBook={generateLegacyBook}
               onCreateShare={createActiveBookShare}
               onOpenSavedBook={openSavedBook}
+              bookEditorOpen={bookEditorOpen}
+              onCloseBookEditor={() => setBookEditorOpen(false)}
+              onOpenBookEditor={() => setBookEditorOpen(true)}
+              onReturnToBookShelf={returnToBookShelf}
               onRevokeShare={revokeActiveBookShare}
               onSaveBook={saveActiveBook}
               setBookBodyDraft={setBookBodyDraft}
               setBookTitleDraft={setBookTitleDraft}
-              setBookVisibility={setBookVisibility}
               setShareOptions={setShareOptions}
               shareError={shareError}
               shareLoading={shareLoading}
@@ -2384,13 +2407,13 @@ export function GalaxyWorkspace({
 function ZoneScene({
   activeZone,
   activeBook,
+  bookEditorOpen,
   bookBodyDraft,
   bookError,
   bookLoading,
   bookSaveError,
   bookShares,
   bookTitleDraft,
-  bookVisibility,
   canCreateBook,
   canOpenSavedBooks,
   confirmedBookSources,
@@ -2409,6 +2432,9 @@ function ZoneScene({
   onOpenPanel,
   onOpenPlanet,
   onOpenSavedBook,
+  onCloseBookEditor,
+  onOpenBookEditor,
+  onReturnToBookShelf,
   onSelectTheme,
   onSelectPlanet,
   onToast,
@@ -2444,17 +2470,16 @@ function ZoneScene({
   selectedPlanetCoverPreviewUrl,
   setBookBodyDraft,
   setBookTitleDraft,
-  setBookVisibility,
 }: {
   activeZone: GalaxyZoneKey;
   activeBook: ActiveLegacyBook | null;
+  bookEditorOpen: boolean;
   bookBodyDraft: string;
   bookError: string | null;
   bookLoading: boolean;
   bookSaveError: string | null;
   bookShares: LegacyBookShare[];
   bookTitleDraft: string;
-  bookVisibility: LegacyBookVisibility;
   canCreateBook: boolean;
   canOpenSavedBooks: boolean;
   confirmedBookSources: Array<{ id: string; title: string }>;
@@ -2473,6 +2498,9 @@ function ZoneScene({
   onOpenPanel: (key: PanelKey) => void;
   onOpenPlanet: (planetId: string | null) => void;
   onOpenSavedBook: (bookId: string) => void;
+  onCloseBookEditor: () => void;
+  onOpenBookEditor: () => void;
+  onReturnToBookShelf: () => void;
   onSelectTheme: (theme: string) => void;
   onSelectPlanet: (planetId: string) => void;
   onToast: (message: string) => void;
@@ -2486,7 +2514,6 @@ function ZoneScene({
   selectedPlanet: Planet | null;
   setBookBodyDraft: (value: string) => void;
   setBookTitleDraft: (value: string) => void;
-  setBookVisibility: (value: LegacyBookVisibility) => void;
   setSelectedWorkshopBg: (value: string) => void;
   setSelectedWorkshopMaterial: (value: string) => void;
   setSelectedWorkshopZone: (value: GalaxyZoneKey) => void;
@@ -2739,120 +2766,114 @@ function ZoneScene({
 
   if (activeZone === "books") {
     return (
-      <div className="bookmaker-stage">
-        <section className="book-workbench">
-          <p className="panel-kicker">家书工坊</p>
-          <h2>{activeBook ? "正在编辑真实已保存家书" : "从真实来源写成家书"}</h2>
-          <p>当前主题：{selectedTheme}。只会调用已保存家书的真实服务，不会读取本地草稿或生成演示链接。</p>
-
-          {growingBooks.length > 0 ? (
-            <div className="book-sections" aria-label="已保存家书">
-              <strong>已保存家书</strong>
-              {growingBooks.map((book) => (
+      <div className={`bookmaker-stage${activeBook ? " reading" : ""}`}>
+        {!activeBook ? (
+          <>
+            <header className="book-market-heading">
+              <p className="panel-kicker">家书工坊 · 家庭书架</p>
+              <h2>把写好的家书，摆回家人的星系</h2>
+              <p>先看封面，再翻开阅读。当前主题为「{selectedTheme}」，所有书籍都从已保存的真实记忆长出。</p>
+            </header>
+            <section aria-label="家书书架" className="book-market-shelf">
+              {growingBooks.map((book, index) => (
                 <button
                   aria-label={`打开已保存家书：${book.title ?? "未命名家书"}`}
-                  className="secondary"
+                  className={`book-cover-card cover-tone-${index % 4}`}
                   key={book.id}
                   onClick={() => onOpenSavedBook(book.id)}
                   type="button"
                 >
-                  {book.title ?? "未命名家书"} · {book.memoryCount} 条记忆
+                  <span className="book-cover-orbit" aria-hidden="true" />
+                  <span className="book-cover-kicker">家书星球 · 家庭私藏</span>
+                  <strong>{book.title ?? "未命名家书"}</strong>
+                  <small>{book.memoryCount} 段被确认的记忆</small>
+                  <span className="book-cover-open">翻开阅读</span>
                 </button>
               ))}
-            </div>
-          ) : null}
-
-          {!activeBook && canCreateBook ? (
-            <>
-              <label>
-                家书标题（可选）
-                <input
-                  aria-label="家书标题"
-                  onChange={(event) => setBookTitleDraft(event.target.value)}
-                  placeholder="让 AI 为这封家书命名"
-                  value={bookTitleDraft}
-                />
-              </label>
-              <label>
-                可见范围
-                <select
-                  aria-label="家书可见范围"
-                  className="panel-select"
-                  onChange={(event) => setBookVisibility(event.target.value as LegacyBookVisibility)}
-                  value={bookVisibility}
-                >
-                  <option value="family">家庭可见</option>
-                  <option value="private">仅自己可见</option>
-                </select>
-              </label>
-              <div className="book-sections" aria-label="本次家书来源">
-                <strong>本次星轨已选来源</strong>
-                {confirmedBookSources.map((source) => <span className="book-source" key={source.id}>{source.title}</span>)}
-              </div>
-              <div className="book-actions">
-                <button className="primary" disabled={bookLoading} onClick={onCreateBook} type="button">
-                  {bookLoading ? "正在请求 AI 生成…" : "生成这本家书"}
+              {canCreateBook ? (
+                <button aria-label="生成这本家书" className="book-cover-card book-cover-new" disabled={bookLoading} onClick={onCreateBook} type="button">
+                  <span className="book-cover-plus" aria-hidden="true">+</span>
+                  <strong>{bookLoading ? "正在装订家书…" : "生成一本家书"}</strong>
+                  <small>{confirmedBookSources.length} 段已确认共鸣记忆</small>
+                  <span className="book-cover-open">从当前主题开始</span>
                 </button>
+              ) : null}
+            </section>
+            {!canOpenSavedBooks && !canCreateBook ? <p className="book-market-empty">请先确认一条共鸣星轨，家书才会拥有真实的来源。</p> : null}
+            {bookError ? <p role="alert">{bookError}</p> : null}
+          </>
+        ) : (
+          <section aria-label="真实家书详情" className="book-reader-shell">
+            <header className="book-reader-heading">
+              <div>
+                <p className="panel-kicker">已保存家书 · 阅读中</p>
+                <h2>{activeBook.title || "未命名家书"}</h2>
               </div>
-            </>
-          ) : null}
-
-          {!activeBook && !canCreateBook && !canOpenSavedBooks ? (
-            <p className="scene-empty-state">请先确认一条共鸣星轨，才可基于真实记忆创建家书。</p>
-          ) : null}
-          {bookError ? <p role="alert">{bookError}</p> : null}
-        </section>
-
-        {activeBook ? (
-          <section className="book-preview" aria-label="真实家书详情">
+              <div className="book-reader-actions">
+                <button className="secondary" onClick={onReturnToBookShelf} type="button">返回书架</button>
+                <button className="primary" onClick={onOpenBookEditor} type="button">编辑此书</button>
+              </div>
+            </header>
             <FamilyBookReader
               body={bookBodyDraft || activeBook.body}
               intro={activeBook.intro || "这封家书从已确认的家庭记忆中长出，留给以后每一次温柔的回望。"}
+              key={activeBook.id}
               media={activeBook.media}
               sections={activeBook.sections}
               sourceLabels={activeBook.sourceLabels}
               title={bookTitleDraft || activeBook.title}
             />
-            <p>真实已保存家书 · 编辑后保存，纪念册预览会同步更新。</p>
-            <label>
-              家书标题
-              <input aria-label="家书标题" onChange={(event) => setBookTitleDraft(event.target.value)} value={bookTitleDraft} />
-            </label>
-            <label>
-              家书正文
-              <textarea aria-label="家书正文" onChange={(event) => setBookBodyDraft(event.target.value)} value={bookBodyDraft} />
-            </label>
-            <div className="book-actions">
-              <button className="primary" disabled={bookLoading} onClick={onSaveBook} type="button">保存家书修改</button>
-            </div>
-            {bookSaveError ? <p role="alert">{bookSaveError}</p> : null}
-            {activeBook.sourceLabelList.length > 0 ? (
-              <div className="book-sections" aria-label="真实来源标签">
-                <strong>来源记忆</strong>
-                {activeBook.sourceLabelList.map((label) => <span className="book-source" key={label}>{label}</span>)}
-              </div>
-            ) : null}
-
-            <div className="book-sections" aria-label="分享面板">
-              <strong>分享范围</strong>
-              <label><input checked={shareOptions.showBody} onChange={(event) => setShareOptions({ ...shareOptions, showBody: event.target.checked })} type="checkbox" />显示家书正文</label>
-              <label><input checked={shareOptions.showSourceTitles} onChange={(event) => setShareOptions({ ...shareOptions, showSourceTitles: event.target.checked })} type="checkbox" />显示来源标题</label>
-              <label><input aria-label="分享原始文本" checked={shareOptions.showOriginalText} onChange={(event) => setShareOptions({ ...shareOptions, showOriginalText: event.target.checked })} type="checkbox" />分享原始文本</label>
-              <button className="secondary" disabled={shareLoading} onClick={onCreateShare} type="button">创建分享链接</button>
-              {shareError ? <p role="alert">{shareError}</p> : null}
-              {bookShares.map((share) => (
-                <div className="book-source" key={share.token}>
-                  <span>{share.url}</span>
-                  <button aria-label={`撤回分享：${share.token}`} className="secondary" disabled={shareLoading} onClick={() => onRevokeShare(share.token)} type="button">撤回</button>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : (
-          <section className="book-preview">
-            <p>还没有打开真实家书</p>
-            <h3>{canOpenSavedBooks ? "从已保存家书继续阅读" : "确认真实共鸣后再生成"}</h3>
-            <button className="secondary" disabled type="button">创建分享链接</button>
+            <AnimatePresence>
+              {bookEditorOpen ? (
+                <motion.section
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  aria-label="家书编辑与分享"
+                  aria-modal="true"
+                  className="book-editor-drawer"
+                  exit={{ opacity: 0, scale: 0.98, y: 14 }}
+                  initial={{ opacity: 0, scale: 0.98, y: 14 }}
+                  role="dialog"
+                  transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
+                >
+                  <div className="book-editor-heading">
+                    <div><p className="panel-kicker">编辑与分享</p><h3>这本家书的私密工作台</h3></div>
+                    <button aria-label="关闭家书编辑" className="secondary" onClick={onCloseBookEditor} type="button">完成阅读</button>
+                  </div>
+                  <label>
+                    家书标题
+                    <input aria-label="家书标题" onChange={(event) => setBookTitleDraft(event.target.value)} value={bookTitleDraft} />
+                  </label>
+                  <label>
+                    家书正文
+                    <textarea aria-label="家书正文" onChange={(event) => setBookBodyDraft(event.target.value)} value={bookBodyDraft} />
+                  </label>
+                  <div className="book-actions">
+                    <button className="primary" disabled={bookLoading} onClick={onSaveBook} type="button">保存家书修改</button>
+                  </div>
+                  {bookSaveError ? <p role="alert">{bookSaveError}</p> : null}
+                  {activeBook.sourceLabelList.length > 0 ? (
+                    <div className="book-sections" aria-label="真实来源标签">
+                      <strong>来源记忆</strong>
+                      {activeBook.sourceLabelList.map((label) => <span className="book-source" key={label}>{label}</span>)}
+                    </div>
+                  ) : null}
+                  <div className="book-sections" aria-label="分享面板">
+                    <strong>分享范围</strong>
+                    <label><input checked={shareOptions.showBody} onChange={(event) => setShareOptions({ ...shareOptions, showBody: event.target.checked })} type="checkbox" />显示家书正文</label>
+                    <label><input checked={shareOptions.showSourceTitles} onChange={(event) => setShareOptions({ ...shareOptions, showSourceTitles: event.target.checked })} type="checkbox" />显示来源标题</label>
+                    <label><input aria-label="分享原始文本" checked={shareOptions.showOriginalText} onChange={(event) => setShareOptions({ ...shareOptions, showOriginalText: event.target.checked })} type="checkbox" />分享原始文本</label>
+                    <button className="secondary" disabled={shareLoading} onClick={onCreateShare} type="button">创建分享链接</button>
+                    {shareError ? <p role="alert">{shareError}</p> : null}
+                    {bookShares.map((share) => (
+                      <div className="book-source" key={share.token}>
+                        <span>{share.url}</span>
+                        <button aria-label={`撤回分享：${share.token}`} className="secondary" disabled={shareLoading} onClick={() => onRevokeShare(share.token)} type="button">撤回</button>
+                      </div>
+                    ))}
+                  </div>
+                </motion.section>
+              ) : null}
+            </AnimatePresence>
           </section>
         )}
       </div>

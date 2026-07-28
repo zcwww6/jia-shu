@@ -23,6 +23,19 @@
   letter-spacing: 0.12em;
 }
 
+.toolbarActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pageIndicator {
+  color: rgba(255, 239, 209, 0.68);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
 .exportButton {
   display: inline-flex;
   align-items: center;
@@ -70,10 +83,68 @@
 }
 
 .book {
-  display: grid;
-  gap: 28px;
   max-width: 1180px;
   margin: 0 auto;
+}
+
+.turningSpread {
+  perspective: 1800px;
+  transform-style: preserve-3d;
+}
+
+.readerControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px auto 0;
+  color: rgba(255, 239, 209, 0.72);
+  font-family: var(--font-geist-sans), "Microsoft YaHei", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.turnButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 108px;
+  min-height: 42px;
+  gap: 5px;
+  border: 1px solid rgba(251, 218, 160, 0.38);
+  border-radius: 999px;
+  padding: 9px 14px;
+  color: #fff4df;
+  background: rgba(87, 51, 30, 0.52);
+  cursor: pointer;
+  font: inherit;
+  transition: transform 180ms ease-out, border-color 180ms ease-out, background-color 180ms ease-out;
+}
+
+.turnButton:hover:not(:disabled) {
+  border-color: #ffe1a9;
+  background: rgba(137, 82, 43, 0.76);
+  transform: translateY(-1px);
+}
+
+.turnButton:focus-visible {
+  outline: 3px solid #ffe0a0;
+  outline-offset: 3px;
+}
+
+.turnButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.exportBook {
+  position: fixed;
+  top: 0;
+  left: -240vw;
+  display: grid;
+  width: 1180px;
+  gap: 28px;
+  pointer-events: none;
 }
 
 .spread {
@@ -444,6 +515,26 @@
   .toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .toolbarActions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .readerControls {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .readerControls > span {
+    width: 100%;
+    order: -1;
+    text-align: center;
+  }
+
+  .turnButton {
+    flex: 1;
   }
 
   .spread {

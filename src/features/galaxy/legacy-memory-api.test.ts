@@ -85,6 +85,37 @@ describe("legacy memory API bridge", () => {
     );
   });
 
+  it("omits absent AI review labels when confirming a memory", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: "memory-1", planetId: "planet-1", status: "confirmed", version: 5,
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await confirmLegacyMemory({
+      memoryId: "memory-1",
+      version: 4,
+      title: "确认的除夕合照",
+      summary: "确认后的团圆瞬间",
+      tags: ["春节"],
+      // @ts-expect-error stale callers may still send null; the client must not serialize it.
+      occurredAtLabel: null,
+      // @ts-expect-error stale callers may still send null; the client must not serialize it.
+      locationLabel: null,
+      people: ["妈妈", "我"],
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/memories/memory-1/confirm", expect.objectContaining({
+      headers: expect.objectContaining({ "If-Match-Version": "4" }),
+      body: JSON.stringify({
+        version: 4,
+        title: "确认的除夕合照",
+        summary: "确认后的团圆瞬间",
+        tags: ["春节"],
+        people: ["妈妈", "我"],
+      }),
+    }));
+  });
+
   it("surfaces the server error message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ message: "AI 服务暂不可用，请稍后再试。" }), { status: 503 }),

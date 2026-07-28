@@ -1,10 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { FamilyBookReader } from "./family-book-reader";
 
 describe("FamilyBookReader", () => {
-  it("weaves real image and voice memories through a two-page keepsake preview", () => {
+  it("shows one two-page spread at a time and turns to real image and voice memories", async () => {
     render(
       <FamilyBookReader
         body="写给未来的我们，愿每次回望都有一盏灯。"
@@ -43,11 +43,19 @@ describe("FamilyBookReader", () => {
 
     expect(screen.getByRole("heading", { name: "灯火一直在" })).toBeInTheDocument();
     expect(screen.getByLabelText("家书纪念册预览")).toBeInTheDocument();
-    expect(screen.getByAltText("除夕餐桌：一家人围着热汤。")).toHaveAttribute("src", "/api/assets/image-1/content");
-    expect(screen.getByLabelText("播放声音记忆：外婆的声音")).toHaveAttribute("src", "/api/assets/audio-1/content");
+    expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "0");
+    expect(screen.getByRole("button", { name: "上一组双页" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一组双页" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一组双页" }));
+
+    await waitFor(() => expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "1"));
+    const visibleSpread = screen.getByTestId("visible-family-book-spread");
+    expect(within(visibleSpread).getByAltText("除夕餐桌：一家人围着热汤。")).toHaveAttribute("src", "/api/assets/image-1/content");
+    expect(within(visibleSpread).getByLabelText("播放声音记忆：外婆的声音")).toHaveAttribute("src", "/api/assets/audio-1/content");
     expect(screen.getByRole("button", { name: "下载 PDF 纪念册" })).toBeEnabled();
-    expect(screen.getByText("声音夹页")).toBeInTheDocument();
-    expect(screen.getByText("来源 · 雨夜送学")).toBeInTheDocument();
-    expect(screen.getAllByText("雨夜里的车灯和厨房的灯，照见同一条回家路。")).toHaveLength(1);
+    expect(within(visibleSpread).getByText("声音夹页")).toBeInTheDocument();
+    expect(within(visibleSpread).getByText("来源 · 雨夜送学")).toBeInTheDocument();
+    expect(within(visibleSpread).getAllByText("雨夜里的车灯和厨房的灯，照见同一条回家路。")).toHaveLength(1);
   });
 });
