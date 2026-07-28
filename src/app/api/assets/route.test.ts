@@ -11,6 +11,8 @@ const {
   resolvePersonalGalaxyScope,
   findActivePlanet,
   createAsset,
+  findActiveAsset,
+  claimFailedAssetForRetry,
   updateAssetStatus,
   validateAsset,
   createStorageKey,
@@ -21,6 +23,8 @@ const {
   resolvePersonalGalaxyScope: vi.fn(),
   findActivePlanet: vi.fn(),
   createAsset: vi.fn(),
+  findActiveAsset: vi.fn(),
+  claimFailedAssetForRetry: vi.fn(),
   updateAssetStatus: vi.fn(),
   validateAsset: vi.fn(),
   createStorageKey: vi.fn(),
@@ -31,7 +35,12 @@ const {
 vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/server/db/galaxy-repo", () => ({ resolvePersonalGalaxyScope }));
 vi.mock("@/server/db/planet-repo", () => ({ findActivePlanet }));
-vi.mock("@/server/db/asset-repo", () => ({ createAsset, updateAssetStatus }));
+vi.mock("@/server/db/asset-repo", () => ({
+  createAsset,
+  findActiveAsset,
+  claimFailedAssetForRetry,
+  updateAssetStatus,
+}));
 vi.mock("@/server/media/asset-validation", () => ({ validateAsset }));
 vi.mock("@/server/media/media-store", () => ({
   createStorageKey,
@@ -45,6 +54,7 @@ function multipartRequest(input: {
   planetId?: string;
   kind?: string;
   visibility?: string;
+  idempotencyKey?: string;
   file?: { bytes?: Uint8Array; type?: string; name?: string };
 } = {}) {
   const form = new FormData();
@@ -64,6 +74,7 @@ function multipartRequest(input: {
 
   return new Request("http://localhost/api/assets", {
     method: "POST",
+    headers: input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : undefined,
     body: form,
   });
 }
@@ -85,6 +96,8 @@ describe("POST /api/assets", () => {
     resolvePersonalGalaxyScope.mockReset();
     findActivePlanet.mockReset();
     createAsset.mockReset();
+    findActiveAsset.mockReset();
+    claimFailedAssetForRetry.mockReset();
     updateAssetStatus.mockReset();
     validateAsset.mockReset();
     createStorageKey.mockReset();
@@ -165,6 +178,435 @@ describe("POST /api/assets", () => {
       status: "stored",
     });
     expect(JSON.stringify(body)).not.toMatch(/storageKey|sha256|normalizedStorageKey|thumbnailStorageKey/i);
+  });
+
+  it("replays a matching stored asset before creating another keyed upload", async () => {
+    const idempotencyKey = "e4c4ac66-3c6a-4c65-9d2a-d3b25e45be36";
+    const assetId = "7b6a8f09910635794a5cd65c385accef0ffb08e2b4bc31b4270acdc27523c395";
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    findActiveAsset.mockResolvedValue({
+      id: assetId,
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      storageKey: "user-1/assets/already-stored.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+      originalName: "photo.jpg",
+      width: 640,
+      height: 480,
+      durationMs: null,
+      status: "stored",
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    });
+
+    const response = await POST(multipartRequest({ idempotencyKey }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({
+      id: assetId,
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      originalName: "photo.jpg",
+      status: "stored",
+    });
+    expect(JSON.stringify(body)).not.toMatch(/storageKey|sha256/i);
+    expect(findActiveAsset).toHaveBeenCalledWith({
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      assetId,
+    });
+    expect(createAsset).not.toHaveBeenCalled();
+    expect(writePrivateAsset).not.toHaveBeenCalled();
+    expect(updateAssetStatus).not.toHaveBeenCalled();
+  });
+
+  it("asks the caller to retry the same key when a matching asset is still processing", async () => {
+    const idempotencyKey = "e4c4ac66-3c6a-4c65-9d2a-d3b25e45be36";
+    const assetId = "7b6a8f09910635794a5cd65c385accef0ffb08e2b4bc31b4270acdc27523c395";
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    findActiveAsset.mockResolvedValue({
+      id: assetId,
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      storageKey: "user-1/assets/incomplete.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+      originalName: "photo.jpg",
+      width: 640,
+      height: 480,
+      durationMs: null,
+      status: "processing",
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    });
+
+    const response = await POST(multipartRequest({ idempotencyKey }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      code: "ASSET_UPLOAD_RETRY_PENDING",
+      message: "上传请求尚未完成，请稍后使用原请求重试。",
+    });
+    expect(createAsset).not.toHaveBeenCalled();
+    expect(writePrivateAsset).not.toHaveBeenCalled();
+    expect(updateAssetStatus).not.toHaveBeenCalled();
+  });
+
+  it("rewrites a matching failed stable-key asset through its existing storage keys without another create", async () => {
+    const idempotencyKey = "e4c4ac66-3c6a-4c65-9d2a-d3b25e45be36";
+    const assetId = "7b6a8f09910635794a5cd65c385accef0ffb08e2b4bc31b4270acdc27523c395";
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    findActiveAsset.mockResolvedValue({
+      id: assetId,
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      storageKey: "user-1/assets/failed-original.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+      originalName: "photo.jpg",
+      width: 640,
+      height: 480,
+      durationMs: null,
+      normalizedStorageKey: null,
+      thumbnailStorageKey: null,
+      status: "failed",
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    });
+    claimFailedAssetForRetry.mockResolvedValue(true);
+    writePrivateAsset.mockResolvedValue(undefined);
+    updateAssetStatus.mockResolvedValue(undefined);
+
+    const response = await POST(multipartRequest({ idempotencyKey }));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toMatchObject({ id: assetId, status: "stored" });
+    expect(createAsset).not.toHaveBeenCalled();
+    expect(claimFailedAssetForRetry).toHaveBeenCalledWith({
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      assetId,
+    });
+    expect(writePrivateAsset).toHaveBeenCalledWith("user-1/assets/failed-original.jpg", new Uint8Array([1, 2, 3]));
+    expect(updateAssetStatus).toHaveBeenCalledWith({
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      assetId,
+      status: "stored",
+    });
+  });
+
+  it("keeps a failed stable-key asset retryable after a second write failure", async () => {
+    const idempotencyKey = "e4c4ac66-3c6a-4c65-9d2a-d3b25e45be36";
+    const assetId = "7b6a8f09910635794a5cd65c385accef0ffb08e2b4bc31b4270acdc27523c395";
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    findActiveAsset.mockResolvedValue({
+      id: assetId,
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      storageKey: "user-1/assets/failed-original.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+      originalName: "photo.jpg",
+      width: 640,
+      height: 480,
+      durationMs: null,
+      normalizedStorageKey: null,
+      thumbnailStorageKey: null,
+      status: "failed",
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    });
+    writePrivateAsset
+      .mockRejectedValueOnce(new Error("private storage unavailable"))
+      .mockResolvedValueOnce(undefined);
+    claimFailedAssetForRetry.mockResolvedValue(true);
+    updateAssetStatus.mockResolvedValue(undefined);
+
+    const first = await POST(multipartRequest({ idempotencyKey }));
+    const retry = await POST(multipartRequest({ idempotencyKey }));
+
+    expect(first.status).toBe(500);
+    expect(retry.status).toBe(201);
+    expect(createAsset).not.toHaveBeenCalled();
+    expect(claimFailedAssetForRetry).toHaveBeenCalledTimes(2);
+    expect(writePrivateAsset).toHaveBeenCalledTimes(2);
+    expect(writePrivateAsset).toHaveBeenNthCalledWith(1, "user-1/assets/failed-original.jpg", new Uint8Array([1, 2, 3]));
+    expect(writePrivateAsset).toHaveBeenNthCalledWith(2, "user-1/assets/failed-original.jpg", new Uint8Array([1, 2, 3]));
+    expect(updateAssetStatus.mock.calls.map(([input]) => input.status)).toEqual(["failed", "stored"]);
+  });
+
+  it("allows one failed-key claim to write while the competing caller receives pending", async () => {
+    const idempotencyKey = "e4c4ac66-3c6a-4c65-9d2a-d3b25e45be36";
+    const assetId = "7b6a8f09910635794a5cd65c385accef0ffb08e2b4bc31b4270acdc27523c395";
+    const failed = {
+      id: assetId,
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      storageKey: "user-1/assets/failed-original.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+      originalName: "photo.jpg",
+      width: 640,
+      height: 480,
+      durationMs: null,
+      normalizedStorageKey: null,
+      thumbnailStorageKey: null,
+      status: "failed",
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    };
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    let reads = 0;
+    let releaseLoserRead!: () => void;
+    const loserRead = new Promise<void>((resolve) => { releaseLoserRead = resolve; });
+    findActiveAsset.mockImplementation(async () => {
+      reads += 1;
+      if (reads <= 2) return failed;
+      releaseLoserRead();
+      return { ...failed, status: "processing" };
+    });
+    let claims = 0;
+    let releaseClaims!: () => void;
+    const bothClaims = new Promise<void>((resolve) => { releaseClaims = resolve; });
+    claimFailedAssetForRetry.mockImplementation(async () => {
+      const winner = ++claims === 1;
+      if (claims === 2) releaseClaims();
+      await bothClaims;
+      return winner;
+    });
+    let releaseStorage!: () => void;
+    const storageGate = new Promise<void>((resolve) => { releaseStorage = resolve; });
+    writePrivateAsset.mockImplementation(async () => storageGate);
+    updateAssetStatus.mockResolvedValue(undefined);
+
+    const first = POST(multipartRequest({ idempotencyKey }));
+    const second = POST(multipartRequest({ idempotencyKey }));
+    await loserRead;
+    releaseStorage();
+    const responses = await Promise.all([first, second]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    expect(createAsset).not.toHaveBeenCalled();
+    expect(claimFailedAssetForRetry).toHaveBeenCalledTimes(2);
+    expect(writePrivateAsset).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a safe conflict instead of replaying a mismatched request with the same idempotency key", async () => {
+    const idempotencyKey = "e4c4ac66-3c6a-4c65-9d2a-d3b25e45be36";
+    const assetId = "7b6a8f09910635794a5cd65c385accef0ffb08e2b4bc31b4270acdc27523c395";
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    findActiveAsset.mockResolvedValue({
+      id: assetId,
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      storageKey: "user-1/assets/already-stored.jpg",
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+      originalName: "different-photo.jpg",
+      width: 640,
+      height: 480,
+      durationMs: null,
+      status: "stored",
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    });
+
+    const response = await POST(multipartRequest({ idempotencyKey }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      code: "ASSET_UPLOAD_RETRY_CONFLICT",
+      message: "上传请求冲突，请使用新的请求重试。",
+    });
+    expect(createAsset).not.toHaveBeenCalled();
+    expect(writePrivateAsset).not.toHaveBeenCalled();
+    expect(updateAssetStatus).not.toHaveBeenCalled();
+  });
+
+  it("recovers a first-create P2002 race only after the initial keyed lookup is empty", async () => {
+    const idempotencyKey = "e4c4ac66-3c6a-4c65-9d2a-d3b25e45be36";
+    const assetId = "7b6a8f09910635794a5cd65c385accef0ffb08e2b4bc31b4270acdc27523c395";
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    createAsset.mockRejectedValue(Object.assign(new Error("unique asset id"), { code: "P2002" }));
+    findActiveAsset
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: assetId,
+        userId: "user-1",
+        galaxyId: "galaxy-1",
+        planetId: VALID_PLANET_ID,
+        kind: "image",
+        visibility: "private",
+        storageKey: "user-1/assets/already-stored.jpg",
+        mimeType: "image/jpeg",
+        sizeBytes: 3,
+        sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+        originalName: "photo.jpg",
+        width: 640,
+        height: 480,
+        durationMs: null,
+        status: "stored",
+        createdAt: new Date("2026-07-28T00:00:00.000Z"),
+      });
+
+    const response = await POST(multipartRequest({ idempotencyKey }));
+
+    expect(response.status).toBe(201);
+    expect(createAsset).toHaveBeenCalledTimes(1);
+    expect(findActiveAsset).toHaveBeenCalledTimes(2);
+    expect(writePrivateAsset).not.toHaveBeenCalled();
+  });
+
+  it("derives an opaque scoped asset id for a punctuation idempotency key and replays it without raw storage paths", async () => {
+    const idempotencyKey = "upload:key/with?punctuation=ok!----";
+    const assetId = "fad7803d2544ec1d4e0347bc4d7448331ac303ea0a4780b3dbc085540f6bec71";
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    findActivePlanet.mockResolvedValue({ id: VALID_PLANET_ID });
+    validateAsset.mockResolvedValue({
+      trustedMime: "image/jpeg",
+      extension: "jpg",
+      kind: "image",
+      sizeBytes: 3,
+      metadata: { width: 640, height: 480 },
+      derivatives: {},
+    });
+    createStorageKey.mockImplementation(({ assetId: storageAssetId }) => `user-1/assets/${storageAssetId}.jpg`);
+    createAsset.mockImplementationOnce(async (input) => ({
+      ...input,
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    }));
+    const stored = {
+      id: assetId,
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      planetId: VALID_PLANET_ID,
+      kind: "image",
+      visibility: "private",
+      storageKey: `user-1/assets/${assetId}.jpg`,
+      mimeType: "image/jpeg",
+      sizeBytes: 3,
+      sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
+      originalName: "photo.jpg",
+      width: 640,
+      height: 480,
+      durationMs: null,
+      status: "stored",
+      createdAt: new Date("2026-07-28T00:00:00.000Z"),
+    };
+    findActiveAsset
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(stored);
+    writePrivateAsset.mockResolvedValue(undefined);
+    updateAssetStatus.mockResolvedValue(undefined);
+
+    const first = await POST(multipartRequest({ idempotencyKey }));
+    const second = await POST(multipartRequest({ idempotencyKey }));
+
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    expect(createAsset).toHaveBeenCalledTimes(1);
+    expect(createAsset).toHaveBeenCalledWith(expect.objectContaining({ id: assetId }));
+    expect(findActiveAsset).toHaveBeenCalledWith({ userId: "user-1", galaxyId: "galaxy-1", assetId });
+    expect(createStorageKey).toHaveBeenCalledWith(expect.objectContaining({ assetId }));
+    expect(createAsset.mock.calls.flat()).not.toContain(idempotencyKey);
+    expect(writePrivateAsset).toHaveBeenCalledTimes(1);
+    expect(writePrivateAsset).toHaveBeenCalledWith(`user-1/assets/${assetId}.jpg`, new Uint8Array([1, 2, 3]));
   });
 
   it.each([

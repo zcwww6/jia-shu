@@ -79,6 +79,46 @@ describe("OpenAiCompatibleProvider", () => {
     expect(form.get("file")).toBeTruthy();
   });
 
+  it("uses the configured text model through structured audio chat when no transcription endpoint model exists", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify({ text: "这是家人的语音。" }) } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const provider = new OpenAiCompatibleProvider({
+      apiKey: "test-key",
+      baseUrl: "https://ai.example/v1",
+      textModel: "audio-chat-model",
+      visionModel: null,
+      transcriptionModel: null,
+      embeddingModel: null,
+    }, fetchImpl);
+
+    await expect(provider.transcribeAudio({
+      audio: {
+        type: "audio/mpeg",
+        arrayBuffer: async () => new TextEncoder().encode("audio").buffer,
+      } as Blob,
+      fileName: "family.mp3",
+    })).resolves.toEqual({ text: "这是家人的语音。" });
+
+    expect(fetchImpl).toHaveBeenCalledWith("https://ai.example/v1/chat/completions", expect.objectContaining({
+      method: "POST",
+    }));
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body));
+    expect(body).toMatchObject({
+      model: "audio-chat-model",
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "audio_transcription", strict: true },
+      },
+    });
+    expect(body.messages[1].content).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "input_audio",
+        input_audio: { data: Buffer.from("audio").toString("base64"), format: "mp3" },
+      }),
+    ]));
+  });
+
   it("posts strictly structured text extraction to chat completions", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({

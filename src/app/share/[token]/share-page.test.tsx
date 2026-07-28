@@ -43,9 +43,10 @@ describe("/share/[token] 分享页", () => {
     render(element);
 
     expect(screen.getByText("我们家的第一个新房除夕")).toBeInTheDocument();
+    expect(screen.getByLabelText("家书纪念册预览")).toBeInTheDocument();
     expect(screen.getByText("共同记住的一天")).toBeInTheDocument();
     expect(screen.getByText("来自妈妈的视角")).toBeInTheDocument();
-    expect(screen.getByText(/来源记忆：memory-1/)).toBeInTheDocument();
+    expect(screen.getByText("来源 · memory-1")).toBeInTheDocument();
     // 原始全文默认关闭，不应展示
     expect(screen.queryByText("原始生成全文内容。")).not.toBeInTheDocument();
   });

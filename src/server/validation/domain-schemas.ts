@@ -1,7 +1,14 @@
 import { z } from "zod";
 
 const cuidSchema = z.string().cuid();
-const assetIdentifierSchema = z.union([cuidSchema, z.string().uuid()]);
+// Idempotent uploads derive their stable asset ID from a SHA-256 digest. The
+// API still scopes every accepted identifier to the authenticated galaxy, so
+// accepting that opaque identifier here cannot grant cross-family access.
+const assetIdentifierSchema = z.union([
+  cuidSchema,
+  z.string().uuid(),
+  z.string().regex(/^[a-fA-F0-9]{64}$/),
+]);
 const boundedTextSchema = z.string().trim().min(1).max(20_000);
 const optionalBoundedTextSchema = z.string().trim().max(20_000).optional();
 const shortTextSchema = z.string().trim().min(1).max(200);

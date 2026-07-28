@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { galaxyZones, planetLinks, planets } from "@/shared/mock/galaxy-data";
 
@@ -8,6 +8,23 @@ import { GalaxyWorkspace } from "./galaxy-workspace";
 const renderDemoGalaxy = () => render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} />);
 
 describe("GalaxyWorkspace", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("explains that memory consent and public sharing are real per-record flows, not local switches", () => {
+    renderDemoGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "进入我的星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "设置权限" }));
+
+    expect(screen.getByText(/AI 整理与进入共鸣的授权都在记忆确认步骤逐条完成/)).toBeInTheDocument();
+    expect(screen.queryByText("允许 AI 整理")).not.toBeInTheDocument();
+    expect(screen.queryByText("允许进入共鸣候选")).not.toBeInTheDocument();
+    expect(screen.queryByText("公开原始素材")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "设为公开可见" })).toBeInTheDocument();
+  });
+
   it("renders server-provided planets when initialPlanets is passed", () => {
     render(
       <GalaxyWorkspace
@@ -174,6 +191,16 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByTestId("planet-link-link-me-grandma-resonance")).toBeInTheDocument();
   });
 
+  it("keeps star-map display filters session-only and does not offer fake relationship edits", () => {
+    renderDemoGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "星图编辑" }));
+
+    expect(screen.getByText("显示筛选仅影响本次浏览，不会改写已保存的家庭关系。"))
+      .toBeInTheDocument();
+    expect(screen.getByText("母女家庭轨道").closest("button")).toBeNull();
+  });
+
   it("persists all selected planet settings from the server response and carries its version forward", async () => {
     const responses = [
       {
@@ -255,8 +282,8 @@ describe("GalaxyWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "我的星系" }));
     fireEvent.click(screen.getByRole("button", { name: "进入服务端改名后的妈妈星球漫游" }));
     fireEvent.click(screen.getByRole("button", { name: "设置权限" }));
-    fireEvent.click(screen.getByRole("button", { name: "设为公开分享" }));
-    await waitFor(() => expect(screen.getByText("当前可见范围：公开分享")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "设为公开可见" }));
+    await waitFor(() => expect(screen.getByText("当前可见范围：公开可见（不创建链接）")).toBeInTheDocument());
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/planets/server-mom",
       expect.objectContaining({
@@ -323,6 +350,101 @@ describe("GalaxyWorkspace", () => {
       "/api/planets/server-mom",
       expect.objectContaining({ method: "PATCH", headers: expect.objectContaining({ "If-Match-Version": "7" }) }),
     );
+  });
+
+  it("uploads a private cover and saves its returned asset ID with a versioned planet PATCH", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/assets" && init?.method === "POST") {
+        return new Response(JSON.stringify({
+          id: "asset-cover-1",
+          planetId: "server-mom",
+          kind: "planet_cover",
+          visibility: "private",
+          mimeType: "image/jpeg",
+          sizeBytes: 11,
+          originalName: "mom-cover.jpg",
+          status: "stored",
+          createdAt: "2026-07-28T00:00:00.000Z",
+        }), { status: 201 });
+      }
+
+      if (url === "/api/planets/server-mom" && init?.method === "PATCH") {
+        return new Response(JSON.stringify({
+          id: "server-mom", name: "妈妈的星球", type: "parent", lifeState: "active",
+          visibility: "family", role: "母亲", theme: "暖橘星环", summary: "服务端妈妈星球。",
+          position: { x: 55, y: 35 }, version: 8, coverAssetId: "asset-cover-1",
+        }), { status: 200 });
+      }
+
+      return new Response(JSON.stringify({ message: `unexpected request ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[{
+          id: "server-mom", name: "妈妈的星球", type: "parent", version: 7, role: "母亲",
+          visibility: "family", theme: "暖橘星环", position: { x: 55, y: 35 },
+          stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "服务端妈妈星球。",
+        }]}
+        initialLinks={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑主题" }));
+    const cover = new File(["cover-image"], "mom-cover.jpg", { type: "image/jpeg" });
+    fireEvent.change(screen.getByLabelText("上传星球封面"), { target: { files: [cover] } });
+    fireEvent.click(screen.getByRole("button", { name: "保存星球封面" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/assets",
+      expect.objectContaining({ method: "POST" }),
+    ));
+    const uploadInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((uploadInit.body as FormData).get("planetId")).toBe("server-mom");
+    expect((uploadInit.body as FormData).get("kind")).toBe("planet_cover");
+    expect((uploadInit.body as FormData).get("visibility")).toBe("private");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/planets/server-mom",
+      expect.objectContaining({
+        method: "PATCH",
+        headers: expect.objectContaining({ "If-Match-Version": "7" }),
+        body: JSON.stringify({ version: 7, coverAssetId: "asset-cover-1" }),
+      }),
+    );
+    expect(screen.getByText("星球封面已保存")).toBeInTheDocument();
+  });
+
+  it("previews an unsaved photo and theme on the selected planet before saving either one", () => {
+    const createObjectURL = vi.fn(() => "blob:planet-cover-preview");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[{
+          id: "server-mom", name: "妈妈的星球", type: "parent", version: 7, role: "母亲",
+          visibility: "family", theme: "暖橘星环", position: { x: 55, y: 35 },
+          stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "服务端妈妈星球。",
+        }]}
+        initialLinks={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈的星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑主题" }));
+    fireEvent.click(screen.getByRole("button", { name: /深空墨蓝/ }));
+    fireEvent.change(screen.getByLabelText("上传星球封面"), {
+      target: { files: [new File(["cover-image"], "night-sky.jpg", { type: "image/jpeg" })] },
+    });
+
+    expect(screen.getByTestId("workshop-planet-preview")).toHaveAttribute("data-theme", "深空墨蓝");
+    expect(screen.getByTestId("workshop-planet-preview")).toHaveStyle({ "--planet-cover": 'url("blob:planet-cover-preview")' });
+    expect(screen.getByText("预览未保存")).toBeInTheDocument();
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
   });
 
   it("persists planet management and the first family connection from the legacy editor", async () => {
@@ -469,18 +591,31 @@ describe("GalaxyWorkspace", () => {
     expect(screen.queryByRole("dialog", { name: "家书光束" })).not.toBeInTheDocument();
   });
 
-  it("opens a story scene from a planet surface memory node", () => {
-    renderDemoGalaxy();
+  it("opens a story scene from a confirmed memory and does not offer a fictional family invitation", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={[{
+          id: "memory-mom-eve", planetId: "mock-mom", title: "新家除夕", occurredAt: "2018",
+          location: "新家", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "全家在新家一起过除夕。",
+        }]}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "开始靠近" }));
     fireEvent.click(screen.getByRole("button", { name: "打开故事场景：2018 新家除夕" }));
 
     expect(screen.getByRole("dialog", { name: "新家除夕故事场景" })).toBeInTheDocument();
-    expect(screen.getByText("漂浮照片碎片")).toBeInTheDocument();
+    expect(screen.getByText("记忆光粒")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "补充一句话" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "邀请家人" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "加入家书" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "设权限" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "邀请家人" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "设权限" }));
+
+    expect(screen.getByRole("heading", { name: "家庭可见星域" })).toBeInTheDocument();
   });
 
   it("switches internal screens without leaving the galaxy workspace", () => {
@@ -504,18 +639,19 @@ describe("GalaxyWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "纪念星域" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-memorial");
     expect(screen.getByText("已过世的家人，不会从星系里消失")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "家族传承星云" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "外婆的纪念星" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "星球工坊" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-customize");
     expect(screen.getAllByText("星球工坊").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("家书暖夜")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "应用到当前星域" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "应用到当前星域" })).not.toBeInTheDocument();
+    expect(screen.getByText("主题会在选择星球后写入数据库。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "记忆星群" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-roam");
     expect(screen.getByText("记忆不是表单，是一颗颗被点亮的星")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新家里的第一个除夕" })).toBeInTheDocument();
+    expect(screen.getByText("当前还没有已确认的记忆星")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "共鸣星轨" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-resonance");
@@ -596,7 +732,7 @@ describe("GalaxyWorkspace", () => {
     expect(screen.queryByRole("button", { name: "分享前确认" })).not.toBeInTheDocument();
   });
 
-  it("keeps secondary prototype controls interactive with visible feedback", () => {
+  it("keeps secondary browsing controls interactive without pretending they are saved", () => {
     renderDemoGalaxy();
 
     fireEvent.click(screen.getByRole("button", { name: "退出沉浸" }));
@@ -606,12 +742,16 @@ describe("GalaxyWorkspace", () => {
     expect(screen.queryByText("自动巡航中 · 星球正在沿轨道漫游")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "星球工坊" }));
-    fireEvent.click(screen.getByRole("button", { name: "应用到当前星域" }));
-    expect(screen.getByText("星球主题已应用")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "应用到当前星域" })).not.toBeInTheDocument();
+    expect(screen.getByText("主题会在选择星球后写入数据库。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "预览该星域" }));
+    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-galaxy");
 
     fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
-    fireEvent.click(screen.getByRole("button", { name: "改用语音" }));
-    expect(screen.getByText("语音入口已准备")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("选择记忆来源"), { target: { value: "audio" } });
+    const voice = new File(["voice"], "family-story.m4a", { type: "audio/mp4" });
+    fireEvent.change(screen.getByLabelText("上传语音"), { target: { files: [voice] } });
+    expect(screen.getByText("已选择：family-story.m4a")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
     expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();

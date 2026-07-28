@@ -121,6 +121,35 @@ describe("asset repo", () => {
     })).rejects.toMatchObject({ code: "ASSET_NOT_FOUND", status: 404 });
   });
 
+  it("claims a failed asset retry only while the owner-scoped row is still failed", async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    getPrismaClient.mockReturnValue({ memoryAsset: { updateMany } });
+    const claimFailedAssetForRetry = (assetRepo as typeof assetRepo & {
+      claimFailedAssetForRetry: (input: {
+        userId: string;
+        galaxyId: string;
+        assetId: string;
+      }) => Promise<boolean>;
+    }).claimFailedAssetForRetry;
+
+    await expect(claimFailedAssetForRetry({
+      userId: "user-1",
+      galaxyId: "galaxy-1",
+      assetId: "asset-1",
+    })).resolves.toBe(true);
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "asset-1",
+        userId: "user-1",
+        galaxyId: "galaxy-1",
+        deletedAt: null,
+        status: "failed",
+      },
+      data: { status: "processing" },
+    });
+  });
+
   it("locks only a readable current-planet cover asset through a parameterized query", async () => {
     const $queryRaw = vi.fn().mockResolvedValue([{ id: "asset-1" }]);
     getPrismaClient.mockReturnValue({ $queryRaw });

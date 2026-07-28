@@ -12,13 +12,13 @@ export const appRoutes: AppRoute[] = [
   },
   {
     label: "妈妈的星球",
-    href: "/planet/mock-mom",
-    description: "进入星球内部漫游。",
+    href: "/galaxy",
+    description: "在家庭星系中选择家人星球并开始漫游。",
   },
   {
     label: "点亮记忆星",
-    href: "/memory/new",
-    description: "记录文字、图片或语音转写内容。",
+    href: "/galaxy",
+    description: "在家人星球上记录文字、图片、语音或日记。",
   },
   {
     label: "共鸣星轨",
@@ -27,8 +27,8 @@ export const appRoutes: AppRoute[] = [
   },
   {
     label: "主题星云",
-    href: "/themes",
-    description: "选择家庭团圆、旅行或纪念主题。",
+    href: "/galaxy",
+    description: "在星球工坊选择主题，并在家书生成时带入。",
   },
   {
     label: "家书工坊",

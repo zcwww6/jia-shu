@@ -66,7 +66,7 @@ describe("legacy book API bridge", () => {
       }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getLegacyBook("book-1")).resolves.toEqual({ ...createdBook, sourceLabels: {} });
+    await expect(getLegacyBook("book-1")).resolves.toEqual({ ...createdBook, intro: "", media: [], sourceLabels: {} });
     await expect(updateLegacyBook("book-1", {
       version: 1,
       title: "新标题",
@@ -90,11 +90,17 @@ describe("legacy book API bridge", () => {
       status: "ready",
       version: 2,
       visibility: "family",
+      intro: "写给未来的一封家书。",
       sourceLabels: {
         "memory-a": "妈妈的真实除夕",
         "memory-b": 42,
         sourceText: { raw: "不得暴露" },
       },
+      media: [
+        { id: "image-1", kind: "image", title: "团圆饭", caption: "桌上的热汤。", mimeType: "image/jpeg", originalName: "dinner.jpg", url: "/api/assets/image-1/content", width: 1600, height: 1200, durationMs: null },
+        { id: "audio-1", kind: "audio", title: "外婆的声音", caption: "一句叮咛。", mimeType: "audio/mpeg", originalName: "grandma.mp3", url: "/api/assets/audio-1/content", width: null, height: null, durationMs: 21_000 },
+        { id: "document-1", kind: "document", title: "日记", caption: "不应作为纪念册媒体。", mimeType: "application/pdf", originalName: "diary.pdf", url: "/api/assets/document-1/content", width: null, height: null, durationMs: null },
+      ],
     }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -106,7 +112,12 @@ describe("legacy book API bridge", () => {
       status: "ready",
       version: 2,
       visibility: "family",
+      intro: "写给未来的一封家书。",
       sourceLabels: { "memory-a": "妈妈的真实除夕" },
+      media: [
+        { id: "image-1", kind: "image", title: "团圆饭", caption: "桌上的热汤。", mimeType: "image/jpeg", originalName: "dinner.jpg", url: "/api/assets/image-1/content", width: 1600, height: 1200, durationMs: null },
+        { id: "audio-1", kind: "audio", title: "外婆的声音", caption: "一句叮咛。", mimeType: "audio/mpeg", originalName: "grandma.mp3", url: "/api/assets/audio-1/content", width: null, height: null, durationMs: 21_000 },
+      ],
     });
   });
 

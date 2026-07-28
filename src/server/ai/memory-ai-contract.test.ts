@@ -30,7 +30,19 @@ describe("memory AI source contract", () => {
     })).toEqual({ sourceKind: "image", jobKind: "image_extraction" });
   });
 
-  it("rejects mixed, cover, or visibility-expanded source assets", () => {
+  it.each([
+    { visibility: "private", kind: "image", jobKind: "image_extraction" },
+    { visibility: "family", kind: "audio", jobKind: "audio_transcription" },
+    { visibility: "selected", kind: "document", jobKind: "document_extraction" },
+  ] as const)("allows a private raw $kind source for a $visibility derived memory", ({ visibility, kind, jobKind }) => {
+    expect(deriveMemoryAiSource({
+      sourceText: "",
+      visibility,
+      assets: [assetFor(kind)],
+    })).toEqual({ sourceKind: kind, jobKind });
+  });
+
+  it("rejects mixed, cover, or non-private visibility-mismatched source assets", () => {
     expect(() => deriveMemoryAiSource({
       sourceText: "",
       visibility: "private",
@@ -43,8 +55,8 @@ describe("memory AI source contract", () => {
     })).toThrow(expect.objectContaining({ code: "MEMORY_ASSET_SOURCE_INVALID", status: 422 }));
     expect(() => deriveMemoryAiSource({
       sourceText: "",
-      visibility: "family",
-      assets: [assetFor("image")],
+      visibility: "selected",
+      assets: [{ ...assetFor("image"), visibility: "family" }],
     })).toThrow(expect.objectContaining({ code: "MEMORY_ASSET_VISIBILITY_INVALID", status: 422 }));
   });
 

@@ -38,9 +38,8 @@ export function assertMemoryAiCapabilitiesConfigured(input: {
     assertCapability(env.OPENAI_VISION_MODEL);
   }
 
-  if (input.sourceKind === "audio") {
-    assertCapability(env.OPENAI_TRANSCRIPTION_MODEL);
-  }
+  // When a dedicated transcription model is absent, the configured text model
+  // can transcribe through the compatible chat audio-input contract.
 }
 
 function assertCapability(model: string | null): void {

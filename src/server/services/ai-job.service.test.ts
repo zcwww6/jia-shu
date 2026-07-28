@@ -157,6 +157,66 @@ describe("AI job service", () => {
     },
   );
 
+  it.each(["family", "selected"] as const)(
+    "creates a consented %s derived job from a private raw image without widening the source",
+    async (visibility) => {
+      const transaction = {};
+      const privateImage = {
+        id: "asset-image",
+        kind: "image" as const,
+        sha256: "image-hash",
+        visibility: "private" as const,
+      };
+      const snapshot = {
+        id: "memory-1",
+        planetId: "planet-1",
+        sourceText: "照片旁的家庭说明。",
+        occurredAtLabel: null,
+        visibility,
+        status: "draft",
+        version: 5,
+      };
+      getPrismaClient.mockReturnValue({ $transaction: vi.fn() });
+      findActiveMemory.mockResolvedValue(snapshot);
+      lockActiveDraftMemoryForAiJob.mockResolvedValue([snapshot]);
+      lockReadableMemoryAssetsForAiJob.mockResolvedValue([privateImage]);
+      createAiJob.mockResolvedValue({
+        id: `job-private-image-${visibility}`,
+        kind: "image_extraction",
+        status: "queued",
+        attempts: 0,
+        errorCode: null,
+        completedAt: null,
+      });
+      executeIdempotentDbOperation.mockImplementation(async (_database, _repo, _input, operation) => {
+        const completion = await operation(transaction, "operation-1");
+        return { kind: "completed", operationId: "operation-1", response: completion.response, status: completion.responseStatus };
+      });
+
+      await expect(createMemoryAiJob(scope, "memory-1", {
+        consent: true,
+        idempotencyKey: `ai-job-private-image-${visibility}`,
+      })).resolves.toMatchObject({ kind: "completed", status: 202 });
+
+      expect(lockReadableMemoryAssetsForAiJob).toHaveBeenCalledWith({
+        ...scope,
+        planetId: "planet-1",
+        memoryId: "memory-1",
+      }, transaction);
+      expect(createAiJob).toHaveBeenCalledWith(expect.objectContaining({
+        kind: "image_extraction",
+        requestHash: memoryAiSnapshotHash({
+          memoryId: "memory-1",
+          sourceText: snapshot.sourceText,
+          version: 5,
+          purpose: MEMORY_EXTRACTION_PURPOSE,
+          assets: [privateImage],
+        }),
+      }), transaction);
+      expect(privateImage.visibility).toBe("private");
+    },
+  );
+
   it("creates a new exported text job through the generic source snapshot", async () => {
     const transaction = {};
     const snapshot = {

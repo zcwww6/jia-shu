@@ -128,9 +128,8 @@ function assertLockedAssetsForMemory(input: CreateMemoryWithAssetsInput, lockedA
     throw new DomainError("MEMORY_ASSET_SOURCE_INVALID", 422, "同一条记忆只能使用一种受支持的素材类型。");
   }
 
-  if (lockedAssets.some((asset) => asset.visibility !== input.visibility)) {
-    throw new DomainError("MEMORY_ASSET_VISIBILITY_INVALID", 422, "素材可见范围必须与记忆一致。");
-  }
+  // Raw media keeps its own access boundary. A consented derived memory may
+  // have family or selected visibility without widening the private original.
 }
 
 /**
@@ -298,6 +297,7 @@ export async function updateMemoryDraft(input: {
           galaxyId: input.galaxyId,
           memoryId: input.memoryId,
           deletedAt: null,
+          kind: "text",
         },
         data: { visibility: input.patch.visibility },
       });

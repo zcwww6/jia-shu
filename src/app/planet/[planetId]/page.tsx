@@ -1,12 +1,5 @@
-import { PlanetExplorer } from "@/features/planet/planet-explorer";
+import { redirect } from "next/navigation";
 
-interface PlanetPageProps {
-  params: Promise<{
-    planetId: string;
-  }>;
-}
-
-export default async function PlanetPage({ params }: PlanetPageProps) {
-  const { planetId } = await params;
-  return <PlanetExplorer planetId={planetId} />;
+export default function PlanetPage() {
+  redirect("/galaxy");
 }

@@ -111,7 +111,7 @@ describe("memory repo", () => {
     });
   });
 
-  it("creates a draft and atomically binds only locked scoped readable assets", async () => {
+  it("binds a private image source to a family draft without widening the original asset", async () => {
     const createMemory = vi.fn().mockResolvedValue({ id: "memory-1" });
     const $queryRaw = vi.fn().mockResolvedValue([{ id: "asset-image", kind: "image", visibility: "private" }]);
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
@@ -127,7 +127,7 @@ describe("memory repo", () => {
       planetId: "planet-1",
       sourceText: "这是照片的补充说明。",
       assetIds: ["asset-image"],
-      visibility: "private",
+      visibility: "family",
       allowResonance: false,
       allowBook: false,
     }, transaction as never);
@@ -139,7 +139,7 @@ describe("memory repo", () => {
         planetId: "planet-1",
         sourceText: "这是照片的补充说明。",
         title: undefined,
-        visibility: "private",
+        visibility: "family",
         allowResonance: false,
         allowBook: false,
         occurredAtLabel: undefined,
@@ -256,11 +256,16 @@ describe("memory repo", () => {
     });
   });
 
-  it.each(["text", "image", "audio", "document"] as const)(
-    "atomically synchronizes %s assets when a draft visibility patch succeeds",
-    async () => {
+  it("synchronizes only generated text metadata when a draft visibility patch succeeds", async () => {
       const updateMemory = vi.fn().mockResolvedValue({ count: 1 });
-      const updateAssets = vi.fn().mockResolvedValue({ count: 1 });
+      const boundRawImage = { kind: "image", visibility: "private" };
+      const updateAssets = vi.fn().mockImplementation(async ({ where, data }) => {
+        if (where.kind === boundRawImage.kind) {
+          boundRawImage.visibility = data.visibility;
+        }
+
+        return { count: 1 };
+      });
       const transaction = {
         memory: { updateMany: updateMemory },
         memoryAsset: { updateMany: updateAssets },
@@ -298,11 +303,12 @@ describe("memory repo", () => {
           galaxyId: "galaxy-1",
           memoryId: "memory-1",
           deletedAt: null,
+          kind: "text",
         },
         data: { visibility: "family" },
       });
-    },
-  );
+      expect(boundRawImage.visibility).toBe("private");
+  });
 
   it("rolls back a visibility patch when its bound-asset synchronization fails", async () => {
     const updateMemory = vi.fn().mockResolvedValue({ count: 1 });

@@ -62,6 +62,21 @@ describe("domain schemas", () => {
     expect(createMemorySchema.safeParse({ planetId, assetIds: [imageAssetId, imageAssetId] }).success).toBe(false);
   });
 
+  it("accepts deterministic hash asset ids emitted by idempotent uploads for memory sources and covers", () => {
+    const idempotentAssetId = "a".repeat(64);
+
+    expect(createMemorySchema.parse({
+      planetId,
+      sourceText: "",
+      assetIds: [idempotentAssetId],
+      visibility: "family",
+    })).toMatchObject({ assetIds: [idempotentAssetId] });
+    expect(updatePlanetSchema.parse({
+      version: 2,
+      coverAssetId: idempotentAssetId,
+    })).toMatchObject({ coverAssetId: idempotentAssetId });
+  });
+
   it("rejects public visibility for raw memory and asset payloads", () => {
     expect(createMemorySchema.safeParse({ planetId, sourceText: "内容", visibility: "public" }).success).toBe(false);
     expect(

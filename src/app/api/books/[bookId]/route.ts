@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { resolvePersonalGalaxyScope } from "@/server/db/galaxy-repo";
-import { findActiveBook } from "@/server/db/book-repo";
-import { updateActiveBook } from "@/server/db/book-repo";
+import { findActiveBookWithMedia, updateActiveBook } from "@/server/db/book-repo";
 import { updateBookSchema } from "@/server/validation/domain-schemas";
 import { DomainError } from "@/server/domain-error";
 
@@ -11,9 +10,49 @@ export async function GET(_request: Request, { params }: { params: Promise<{ boo
   if (!userId) return NextResponse.json({ code: "UNAUTHENTICATED", message: "请先登录后再查看家书。" }, { status: 401 });
   const scope = await resolvePersonalGalaxyScope(userId);
   const { bookId } = await params;
-  const book = await findActiveBook({ ...scope, bookId });
+  const book = await findActiveBookWithMedia({ ...scope, bookId });
   if (!book) return NextResponse.json({ code: "BOOK_NOT_FOUND", message: "家书不存在或无权访问。" }, { status: 404 });
-  return NextResponse.json({ id: book.id, title: book.title, body: book.body, sections: book.sections, sourceLabels: sourceLabelsFromDraft(book.draft), status: book.status, version: book.version, visibility: book.visibility });
+  return NextResponse.json({
+    id: book.id,
+    title: book.title,
+    body: book.body,
+    intro: introFromDraft(book.draft),
+    sections: book.sections,
+    sourceLabels: sourceLabelsFromDraft(book.draft),
+    status: book.status,
+    version: book.version,
+    visibility: book.visibility,
+    media: mediaFromBook(book),
+  });
+}
+
+function mediaFromBook(book: NonNullable<Awaited<ReturnType<typeof findActiveBookWithMedia>>>) {
+  const included = new Set<string>();
+
+  return book.memories.flatMap(({ memory }) => memory.assets.flatMap((asset) => {
+    if (asset.kind !== "image" && asset.kind !== "audio") return [];
+    if (included.has(asset.id)) return [];
+    included.add(asset.id);
+
+    return [{
+      id: asset.id,
+      kind: asset.kind,
+      mimeType: asset.mimeType,
+      originalName: asset.originalName,
+      title: memory.title ?? asset.originalName,
+      caption: memory.summary ?? "",
+      width: asset.width,
+      height: asset.height,
+      durationMs: asset.durationMs,
+      url: `/api/assets/${asset.id}/content`,
+    }];
+  }));
+}
+
+function introFromDraft(draft: unknown) {
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return "";
+  const intro = (draft as Record<string, unknown>).intro;
+  return typeof intro === "string" ? intro.trim().slice(0, 5_000) : "";
 }
 
 function sourceLabelsFromDraft(draft: unknown): Record<string, string> {

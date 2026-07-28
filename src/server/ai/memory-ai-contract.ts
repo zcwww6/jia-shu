@@ -23,7 +23,13 @@ export function deriveMemoryAiSource(input: {
   visibility: "private" | "family" | "selected";
   assets: readonly MemoryAiSourceAsset[];
 }): { sourceKind: MemoryAiSourceKind; jobKind: MemoryAiPipelineKind } {
-  if (input.assets.some((asset) => asset.visibility !== input.visibility)) {
+  // A consented derived memory may widen only a private raw media source; the
+  // raw asset itself keeps its original private visibility. Non-private and
+  // text sources must remain visibility-aligned with the derived memory.
+  if (input.assets.some((asset) => (
+    asset.visibility !== input.visibility
+    && !(asset.visibility === "private" && asset.kind !== "text")
+  ))) {
     throw new DomainError("MEMORY_ASSET_VISIBILITY_INVALID", 422, "素材可见范围必须与记忆一致。");
   }
 

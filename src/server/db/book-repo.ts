@@ -38,6 +38,70 @@ export async function findActiveBook(input: {
   });
 }
 
+/**
+ * The keepsake reader receives only render-safe source media metadata. Storage
+ * keys and raw memory text stay on the server; the existing scoped asset route
+ * remains the sole way to stream the bytes.
+ */
+export async function findActiveBookWithMedia(input: {
+  userId: string;
+  galaxyId: string;
+  bookId: string;
+}) {
+  return getPrismaClient().book.findFirst({
+    where: {
+      id: input.bookId,
+      userId: input.userId,
+      galaxyId: input.galaxyId,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      title: true,
+      body: true,
+      sections: true,
+      draft: true,
+      status: true,
+      version: true,
+      visibility: true,
+      memories: {
+        where: {
+          userId: input.userId,
+          galaxyId: input.galaxyId,
+          deletedAt: null,
+        },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          memory: {
+            select: {
+              id: true,
+              title: true,
+              summary: true,
+              assets: {
+                where: {
+                  deletedAt: null,
+                  status: { in: ["stored", "ready"] },
+                  kind: { in: ["image", "audio"] },
+                },
+                orderBy: { createdAt: "asc" },
+                select: {
+                  id: true,
+                  kind: true,
+                  mimeType: true,
+                  originalName: true,
+                  width: true,
+                  height: true,
+                  durationMs: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 export async function updateActiveBook(input: { userId: string; galaxyId: string; bookId: string; version: number; body?: string; title?: string | null }) {
   const result = await getPrismaClient().book.updateMany({ where: { id: input.bookId, userId: input.userId, galaxyId: input.galaxyId, deletedAt: null, version: input.version }, data: { ...(input.body !== undefined ? { body: input.body } : {}), ...(input.title !== undefined ? { title: input.title } : {}), version: { increment: 1 } } });
   if (result.count !== 1) throw new DomainError("VERSION_CONFLICT", 409, "家书已被更新，请刷新后再保存。");

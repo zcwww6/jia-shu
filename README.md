@@ -1,6 +1,6 @@
 # 家书星球
 
-AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 Prisma 持久化到 PostgreSQL；Mock 仅作为 AI 能力和演示体验的回退。
+AI 驱动的家庭记忆星系工作台。用户、星系、素材、记忆、共鸣、家书和分享数据通过 Prisma 持久化到 PostgreSQL；业务路径不以 Mock 或本地 JSON 回退。
 
 ## 当前主线
 
@@ -26,7 +26,7 @@ AI 驱动的家庭记忆星系工作台。用户、星系和分享数据通过 P
 - shadcn/ui 风格基础组件
 - Framer Motion
 - Vitest + Testing Library
-- PostgreSQL + Prisma 持久化；支持按需接入真实 OpenAI，未启用时回落 Mock
+- PostgreSQL + Prisma 持久化；AI 未配置或上游不可用时返回明确错误，不生成 Mock 结果
 
 ## 本地开发
 

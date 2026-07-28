@@ -8,11 +8,11 @@ const { redirect } = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ redirect }));
 
-import ThemesPage from "./page";
+import PlanetPage from "./page";
 
-describe("ThemesPage", () => {
-  it("redirects the retired theme mock entry to the galaxy workspace", () => {
-    expect(() => ThemesPage()).toThrow("REDIRECT:/galaxy");
+describe("PlanetPage", () => {
+  it("redirects a retired direct planet URL to the data-backed galaxy workspace", () => {
+    expect(() => PlanetPage()).toThrow("REDIRECT:/galaxy");
     expect(redirect).toHaveBeenCalledWith("/galaxy");
   });
 });

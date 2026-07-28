@@ -1,13 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+type TestAuthConfigFactory = () => {
+  trustHost?: boolean;
+  session?: { strategy?: string };
+  callbacks?: {
+    session?: (args: never) => Promise<{ user?: { id?: string } }> | { user?: { id?: string } };
+  };
+};
+
 const { nextAuth } = vi.hoisted(() => ({
-  nextAuth: vi.fn(() => ({
-    handlers: {},
-    auth: vi.fn(),
-    signIn: vi.fn(),
-    signOut: vi.fn(),
-  })),
+  nextAuth: vi.fn((configFactory: TestAuthConfigFactory) => {
+    void configFactory;
+    return {
+      handlers: {},
+      auth: vi.fn(),
+      signIn: vi.fn(),
+      signOut: vi.fn(),
+    };
+  }),
 }));
+
+function configFactoryFromLastCall(): TestAuthConfigFactory {
+  const configFactory = nextAuth.mock.calls[nextAuth.mock.calls.length - 1]?.[0];
+
+  if (!configFactory) {
+    throw new Error("NextAuth 未收到配置工厂。");
+  }
+
+  return configFactory;
+}
 
 vi.mock("next-auth", () => ({ default: nextAuth }));
 vi.mock("@auth/prisma-adapter", () => ({ PrismaAdapter: vi.fn(() => ({})) }));
@@ -37,11 +58,7 @@ describe("primary auth configuration", () => {
 
     await import("./auth");
 
-    const configFactory = nextAuth.mock.calls[0]?.[0] as () => {
-      trustHost?: boolean;
-      session?: { strategy?: string };
-    };
-    const config = configFactory();
+    const config = configFactoryFromLastCall()();
 
     expect(config.trustHost).toBe(false);
     expect(config.session).toEqual({ strategy: "jwt" });
@@ -54,12 +71,7 @@ describe("primary auth configuration", () => {
 
     await import("./auth");
 
-    const configFactory = nextAuth.mock.calls[0]?.[0] as () => {
-      callbacks?: {
-        session?: (args: never) => Promise<{ user?: { id?: string } }> | { user?: { id?: string } };
-      };
-    };
-    const sessionCallback = configFactory().callbacks?.session;
+    const sessionCallback = configFactoryFromLastCall()().callbacks?.session;
 
     const session = await sessionCallback?.({
       session: { user: {}, expires: "2030-01-01T00:00:00.000Z" },
@@ -76,12 +88,7 @@ describe("primary auth configuration", () => {
 
     await import("./auth");
 
-    const configFactory = nextAuth.mock.calls[0]?.[0] as () => {
-      callbacks?: {
-        session?: (args: never) => Promise<{ user?: { id?: string } }> | { user?: { id?: string } };
-      };
-    };
-    const sessionCallback = configFactory().callbacks?.session;
+    const sessionCallback = configFactoryFromLastCall()().callbacks?.session;
 
     const session = await sessionCallback?.({
       session: { user: {}, expires: "2030-01-01T00:00:00.000Z" },

@@ -53,7 +53,7 @@ export async function updateAssetStatus(input: {
   userId: string;
   galaxyId: string;
   assetId: string;
-  status: "stored" | "failed";
+  status: "processing" | "stored" | "failed";
 }) {
   const prisma = getPrismaClient();
 
@@ -70,6 +70,31 @@ export async function updateAssetStatus(input: {
   if (result.count !== 1) {
     throw new DomainError("ASSET_NOT_FOUND", 404);
   }
+}
+
+/**
+ * Atomically reserves a failed upload for one retry writer. Callers that do
+ * not win must re-read the asset instead of writing through the same keys.
+ */
+export async function claimFailedAssetForRetry(input: {
+  userId: string;
+  galaxyId: string;
+  assetId: string;
+}) {
+  const prisma = getPrismaClient();
+
+  const result = await prisma.memoryAsset.updateMany({
+    where: {
+      id: input.assetId,
+      userId: input.userId,
+      galaxyId: input.galaxyId,
+      deletedAt: null,
+      status: "failed",
+    },
+    data: { status: "processing" },
+  });
+
+  return result.count === 1;
 }
 
 export async function findActiveAsset(input: {

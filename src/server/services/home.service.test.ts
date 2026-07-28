@@ -51,6 +51,7 @@ describe("getHomeData", () => {
       archivedPlanets: [],
       relationships: [],
       pendingResonances: [],
+      confirmedResonances: [],
       growingBooks: [],
       confirmedMemories: [],
     });
@@ -253,6 +254,7 @@ describe("getHomeData", () => {
       targetMemory: { planetId: "planet-2" },
       score: 0.93,
       reason: "两段记忆共同记住了那次搬家。",
+      version: 2,
     };
     const result = await getHomeData("user_1", {
       findHomePlanets: vi.fn().mockResolvedValue([
@@ -301,6 +303,16 @@ describe("getHomeData", () => {
       },
     ]);
     expect(result.planets.map((planet) => planet.stats.resonanceTracks)).toEqual([1, 1]);
+    expect(result.confirmedResonances).toEqual([
+      {
+        id: "resonance-confirmed",
+        sourceMemoryId: "memory-source",
+        targetMemoryId: "memory-target",
+        score: 0.93,
+        reason: "两段记忆共同记住了那次搬家。",
+        version: expect.any(Number),
+      },
+    ]);
   });
 
   it("keeps migrated memorial lifecycle with neutral non-mock copy", async () => {

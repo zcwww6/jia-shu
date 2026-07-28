@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen,
@@ -24,19 +24,13 @@ import {
 } from "lucide-react";
 
 import {
-  galaxyZones,
-  memoryStars,
-  planetLinks,
-  storyNodes,
-} from "@/shared/mock/galaxy-data";
-import {
   getPlanetPresentationType,
   type GalaxyZoneKey,
-  type MemoryExtractResponse,
   type MemoryStar,
   type Planet,
   type PlanetLink,
   type PlanetLinkKind,
+  type StoryNode,
 } from "@/shared/types/galaxy";
 
 import {
@@ -53,6 +47,10 @@ import {
   type LegacyMemoryAiJob,
   type LegacyMemoryResponse,
 } from "./legacy-memory-api";
+import {
+  uploadLegacyAsset,
+  type LegacyAsset,
+} from "./legacy-asset-api";
 import {
   archiveLegacyPlanet,
   createLegacyPlanet,
@@ -75,6 +73,8 @@ import {
   type LegacyBookShareOptions,
   type LegacyBookVisibility,
 } from "./legacy-book-api";
+import { FamilyBookReader } from "@/features/books/family-book-reader";
+import { PlanetThemeStudio } from "./planet-theme-studio";
 
 interface GalaxyView {
   panX: number;
@@ -84,28 +84,36 @@ interface GalaxyView {
 }
 
 type PanelKey =
-  | "me"
-  | "mom"
-  | "dad"
-  | "child"
-  | "friend"
-  | "grandpa"
-  | "legacy"
   | "scopePrivate"
   | "scopeFamily"
   | "scopePublic"
   | "memory1"
-  | "memory2"
-  | "memory3"
-  | "memory4"
   | "resonance"
   | "privacy"
   | "lifecycle"
   | "quickRecord";
 
+const galaxyNavigation: Array<{ key: GalaxyZoneKey; label: string }> = [
+  { key: "galaxy", label: "我的星系" },
+  { key: "privacy", label: "隐私星域" },
+  { key: "memorial", label: "纪念星域" },
+  { key: "workshop", label: "星球工坊" },
+  { key: "memories", label: "记忆星群" },
+  { key: "resonance", label: "共鸣星轨" },
+  { key: "themes", label: "主题星云" },
+  { key: "books", label: "家书工坊" },
+];
+
 type LegacyPlanetChanges = Omit<LegacyPlanetUpdate, "id" | "version">;
 
 const bookWorkshopLockMessage = "请先确认一条共鸣星轨，再进入家书工坊。";
+
+function sourceMemoryIdsForConfirmedResonance(candidate: LegacyPendingResonance | undefined) {
+  if (!candidate?.sourceMemoryId || !candidate.targetMemoryId) return null;
+
+  const sourceMemoryIds = [...new Set([candidate.sourceMemoryId, candidate.targetMemoryId])];
+  return sourceMemoryIds.length === 2 ? sourceMemoryIds : null;
+}
 
 const initialView: GalaxyView = {
   panX: 0,
@@ -114,32 +122,56 @@ const initialView: GalaxyView = {
   rotate: 0,
 };
 
-const routeSteps: Array<{
-  label: string;
+type RouteStepAction = "book" | "create" | "memory" | "planet" | "quickRecord" | "resonance";
+
+type RouteStep = {
+  action: RouteStepAction;
   detail: string;
-  action: "planet" | "book" | PanelKey;
-}> = [
-  {
-    label: "靠近妈妈的星球",
-    detail: "查看她的记忆、星轨和可生成的家书线索",
-    action: "planet",
-  },
-  {
-    label: "点开春节记忆星",
-    detail: "一段饭桌和全家福的记忆正在发光",
-    action: "memory1",
-  },
-  {
-    label: "沿共鸣星轨前进",
-    detail: "AI 发现两颗星球记住了同一天",
-    action: "resonance",
-  },
-  {
-    label: "写成一页家书",
-    detail: "只基于已确认记忆，分享前仍需确认",
-    action: "book",
-  },
-];
+  label: string;
+  targetId?: string;
+};
+
+function buildRouteSteps(planets: Planet[], memories: MemoryStar[]): RouteStep[] {
+  const primaryPlanet = planets.find((planet) => planet.type === "parent") ?? planets[0];
+  if (!primaryPlanet) {
+    return [{
+      action: "create",
+      detail: "先为一位真实家人创建星球，后续的记忆、共鸣与家书才会有可信来源。",
+      label: "创建第一颗家人星球",
+    }];
+  }
+
+  const primaryMemory = memories.find((memory) => memory.planetId === primaryPlanet.id) ?? memories[0];
+  return [
+    {
+      action: "planet",
+      detail: `靠近${primaryPlanet.name}，从这颗真实星球开始漫游。`,
+      label: `靠近${primaryPlanet.name}`,
+      targetId: primaryPlanet.id,
+    },
+    primaryMemory ? {
+      action: "memory",
+      detail: `打开已确认的「${primaryMemory.title}」，查看可追溯的家庭记忆。`,
+      label: `查看${primaryMemory.title}`,
+      targetId: primaryMemory.id,
+    } : {
+      action: "quickRecord",
+      detail: `为${primaryPlanet.name}留下第一段真实记忆，再交给 AI 整理。`,
+      label: `记录${primaryPlanet.name}的一段记忆`,
+      targetId: primaryPlanet.id,
+    },
+    {
+      action: "resonance",
+      detail: "从已确认记忆发起扫描，只有家人确认后才会形成共鸣星轨。",
+      label: "查看共鸣候选",
+    },
+    {
+      action: "book",
+      detail: "只将已确认共鸣的真实来源写成家书，并在分享前再次确认。",
+      label: "写成一页家书",
+    },
+  ];
+}
 
 const planetClassByType: Record<Planet["type"], string> = {
   self: "planet me private-planet has-ring",
@@ -187,6 +219,13 @@ type MemoryDraftContext = {
   signature: string;
 };
 
+type QuickRecordSource = "text" | "image" | "audio" | "document";
+
+type UploadedQuickRecordAsset = {
+  asset: LegacyAsset;
+  signature: string;
+};
+
 type GrowingBookSummary = {
   id: string;
   title: string | null;
@@ -194,7 +233,7 @@ type GrowingBookSummary = {
   memoryCount: number;
 };
 
-type ActiveLegacyBook = Omit<LegacyBookDetail, "sourceLabels"> & { sourceLabels: string[] };
+type ActiveLegacyBook = LegacyBookDetail & { sourceLabelList: string[] };
 
 type BookOperation = {
   bookId: string | null;
@@ -227,14 +266,36 @@ const themeTemplateKeyByLabel: Record<string, string> = {
   "伴侣星云": "couple_story",
 };
 
-function buildMemoryDraftSignature(planetId: string, sourceText: string) {
+function buildMemoryDraftSignature(
+  planetId: string,
+  source: QuickRecordSource,
+  sourceText: string,
+  file: File | null,
+) {
   return JSON.stringify({
     planetId,
-    sourceText,
+    source,
+    sourceText: source === "text" ? sourceText : "",
+    file: source === "text" || !file ? null : {
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      type: file.type,
+    },
     visibility: "family",
     allowResonance: true,
     allowBook: true,
   });
+}
+
+function planetCoverUrl(assetId: string) {
+  return `/api/assets/${encodeURIComponent(assetId)}/content`;
+}
+
+function planetCoverStyle(assetId: string | null | undefined): CSSProperties | undefined {
+  if (!assetId) return undefined;
+
+  return { "--planet-cover": `url("${planetCoverUrl(assetId)}")` } as CSSProperties;
 }
 
 async function waitForMemoryPollDelay(signal: AbortSignal) {
@@ -269,7 +330,7 @@ async function waitForMemoryExtraction(
 
   for (let attempt = 0; attempt < memoryPollAttempts; attempt += 1) {
     if (!control.isCurrent() || control.signal.aborted) return false;
-    if (job.status === "completed") return true;
+    if (job.status === "completed" || job.status === "succeeded") return true;
     if (job.status === "failed") {
       throw new Error(job.error ?? job.errorCode ?? "AI 整理失败，请稍后重试。");
     }
@@ -314,38 +375,6 @@ const planetLinkKindClassName: Record<PlanetLinkKind, string> = {
   custom: "link-custom",
 };
 
-type MemoryPanelKey = "memory1" | "memory2" | "memory3" | "memory4";
-
-const memoryPanelContent: Record<
-  MemoryPanelKey,
-  { title: string; tags: string[]; body: string; assist: string }
-> = {
-  memory1: {
-    title: "新家里的第一个除夕",
-    tags: ["可参与共鸣", "2018 除夕", "全家福"],
-    body: "那年第一次在新房里过年。妈妈忙了一整天，最后在客厅拍了一张合照。",
-    assist: "时间、地点、人物和情绪已提取，可继续进入共鸣星轨。",
-  },
-  memory2: {
-    title: "生日卡片",
-    tags: ["2020", "感动"],
-    body: "孩子第一次亲手做了生日卡片，妈妈说这是那年最好的礼物。",
-    assist: "这颗记忆星适合进入亲子成长星云，也可以补一句妈妈当时的反应。",
-  },
-  memory3: {
-    title: "云南旅行",
-    tags: ["旅行星云", "2024"],
-    body: "退休后最放松的一次旅行。爸爸记得路线，妈妈记得阳光，孩子记得山风。",
-    assist: "这段记忆适合旅行星云，照片优先，地点线索清晰。",
-  },
-  memory4: {
-    title: "外婆的菜谱",
-    tags: ["传承记忆", "春节"],
-    body: "妈妈说，这道菜是外婆每年春节都会做的味道。",
-    assist: "这段记忆连接纪念星域，适合做家族传承页。",
-  },
-};
-
 const sceneClassByZone: Record<GalaxyZoneKey, string> = {
   galaxy: "scene-galaxy",
   privacy: "scene-scope",
@@ -379,7 +408,7 @@ const zoneContent: Record<
     title: "家庭星系操作台",
     eyebrow: "我的星系",
     body: "这里不是传统功能菜单，而是一片可以拖拽、缩放、靠近的家庭星系。第一次进入时，推荐航线会引导用户完成从漫游到家书的闭环。",
-    tags: ["推荐航线", "星球漫游", "Mock 数据"],
+    tags: ["推荐航线", "星球漫游", "真实星球"],
   },
   privacy: {
     title: "隐私星域",
@@ -396,7 +425,7 @@ const zoneContent: Record<
   workshop: {
     title: "星球工坊",
     eyebrow: "个人主题",
-    body: "星球材质、星环、主题色和故事节点密度都属于表达层配置。MVP 阶段先保留 Mock 主题，不做复杂保存。",
+    body: "主题与私人封面会保存到当前星球；材质预览和星图筛选只服务当前浏览，不会改写家庭故事。",
     tags: ["星球材质", "个人星环", "主题实验"],
   },
   memories: {
@@ -447,9 +476,10 @@ function toVisualPlanet(result: LegacyManagedPlanet, fallback: Planet): Planet {
 
 export function GalaxyWorkspace({
   initialPlanets,
-  initialLinks = planetLinks,
+  initialLinks = [],
   initialArchivedPlanets = [],
   initialConfirmedMemories = [],
+  initialConfirmedResonances = [],
   initialPendingResonances = [],
   initialGrowingBooks = [],
 }: {
@@ -457,6 +487,7 @@ export function GalaxyWorkspace({
   initialLinks?: PlanetLink[];
   initialArchivedPlanets?: Planet[];
   initialConfirmedMemories?: MemoryStar[];
+  initialConfirmedResonances?: LegacyPendingResonance[];
   initialPendingResonances?: LegacyPendingResonance[];
   initialGrowingBooks?: GrowingBookSummary[];
 }) {
@@ -475,6 +506,9 @@ export function GalaxyWorkspace({
   const [selectedWorkshopZone, setSelectedWorkshopZone] = useState<GalaxyZoneKey>("galaxy");
   const [selectedWorkshopBg, setSelectedWorkshopBg] = useState("家书暖夜");
   const [selectedWorkshopMaterial, setSelectedWorkshopMaterial] = useState("柔光釉面");
+  const [selectedPlanetCoverFile, setSelectedPlanetCoverFile] = useState<File | null>(null);
+  const [selectedPlanetCoverPreviewUrl, setSelectedPlanetCoverPreviewUrl] = useState<string | null>(null);
+  const [planetCoverSaving, setPlanetCoverSaving] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState("家庭团圆");
   const [renamePlanetTarget, setRenamePlanetTarget] = useState<Planet | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -497,6 +531,7 @@ export function GalaxyWorkspace({
   const dragStart = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const memoryFlowOperationRef = useRef<MemoryFlowOperation | null>(null);
   const resonanceScanOperationRef = useRef<ResonanceScanOperation | null>(null);
+  const assetUploadRequestRef = useRef<{ key: string; signature: string } | null>(null);
   const memoryDraftRequestRef = useRef<{ key: string; signature: string } | null>(null);
   const memoryDraftContextRef = useRef<MemoryDraftContext | null>(null);
   const memoryJobRequestRef = useRef<{ draftId: string; key: string } | null>(null);
@@ -505,16 +540,21 @@ export function GalaxyWorkspace({
   const bookShareRevokeRequestRef = useRef(new Map<string, string>());
   const bookOperationRef = useRef<BookOperation>({ bookId: null, generation: 0, requestId: 0 });
 
-  const [quickRecordContent, setQuickRecordContent] = useState(
-    "2018 年除夕，妈妈在新房里忙了一整天，最后全家人拍了一张合照。",
-  );
-  const [extractResult, setExtractResult] = useState<MemoryExtractResponse | null>(null);
+  const [quickRecordContent, setQuickRecordContent] = useState("");
+  const [quickRecordSource, setQuickRecordSource] = useState<QuickRecordSource>("text");
+  const [quickRecordFile, setQuickRecordFile] = useState<File | null>(null);
+  const [uploadedQuickRecordAsset, setUploadedQuickRecordAsset] = useState<UploadedQuickRecordAsset | null>(null);
   const [pendingResonances, setPendingResonances] = useState<LegacyPendingResonance[]>(initialPendingResonances);
   const [selectedResonanceId, setSelectedResonanceId] = useState<string | null>(null);
   const [resonanceLoading, setResonanceLoading] = useState(false);
   const [resonanceError, setResonanceError] = useState<string | null>(null);
   const [resonanceDecisionMessage, setResonanceDecisionMessage] = useState<string | null>(null);
-  const [confirmedResonanceSourceMemoryIds, setConfirmedResonanceSourceMemoryIds] = useState<string[] | null>(null);
+  const [confirmedResonanceSourceMemoryIds, setConfirmedResonanceSourceMemoryIds] = useState<string[] | null>(
+    () => initialConfirmedResonances
+      .map(sourceMemoryIdsForConfirmedResonance)
+      .find((sourceMemoryIds): sourceMemoryIds is string[] => sourceMemoryIds !== null)
+      ?? null,
+  );
   const [litMemories, setLitMemories] = useState<MemoryStar[]>(initialConfirmedMemories);
   const [quickRecordTargetPlanetId, setQuickRecordTargetPlanetId] = useState<string | null>(null);
   const [memoryReview, setMemoryReview] = useState<LegacyMemoryResponse | null>(null);
@@ -541,7 +581,11 @@ export function GalaxyWorkspace({
   const [bookShares, setBookShares] = useState<LegacyBookShare[]>([]);
   const [shareLoading, setShareLoading] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
-  const hasConfirmedResonanceThisSession = confirmedResonanceSourceMemoryIds !== null;
+  const hasConfirmedResonance = confirmedResonanceSourceMemoryIds !== null;
+  const routeSteps = useMemo(
+    () => buildRouteSteps(galaxyPlanets, litMemories),
+    [galaxyPlanets, litMemories],
+  );
 
   const activeZoneContent = zoneContent[activeZone];
   const visiblePlanets = useMemo(
@@ -577,10 +621,21 @@ export function GalaxyWorkspace({
     };
   }, [galaxyPlanets]);
   const selectedPlanet = galaxyPlanets.find((planet) => planet.id === selectedPlanetId) ?? null;
+
+  useEffect(() => () => {
+    if (selectedPlanetCoverPreviewUrl && typeof URL.revokeObjectURL === "function") {
+      URL.revokeObjectURL(selectedPlanetCoverPreviewUrl);
+    }
+  }, [selectedPlanetCoverPreviewUrl]);
   const roamingPlanet = galaxyPlanets.find((planet) => planet.id === roamingPlanetId) ?? null;
   const quickRecordTarget = galaxyPlanets.find((planet) => planet.id === quickRecordTargetPlanetId) ?? null;
   const quickRecordDraftSignature = quickRecordTarget
-    ? buildMemoryDraftSignature(quickRecordTarget.id, quickRecordContent.trim())
+    ? buildMemoryDraftSignature(
+      quickRecordTarget.id,
+      quickRecordSource,
+      quickRecordContent.trim(),
+      quickRecordFile,
+    )
     : null;
   const hasMatchingMemoryDraft = Boolean(
     memoryDraftId &&
@@ -590,7 +645,7 @@ export function GalaxyWorkspace({
   );
   const memoryPrimaryActionLabel = hasMatchingMemoryDraft
     ? memoryFlowError ? "重试整理" : "继续整理"
-    : "点亮为记忆星";
+    : quickRecordSource === "text" ? "点亮为记忆星" : "发送给 AI 整理";
   const selectedMemory = selectedMemoryId
     ? litMemories.find((memory) => memory.id === selectedMemoryId) ?? null
     : null;
@@ -674,12 +729,53 @@ export function GalaxyWorkspace({
     memoryJobRequestRef.current = null;
   }
 
+  function resetAssetUploadRequestKey() {
+    assetUploadRequestRef.current = null;
+  }
+
+  function clearMemoryDraftState() {
+    setMemoryReview(null);
+    setMemoryDraftId(null);
+    setMemoryJob(null);
+    setMemoryFlowError(null);
+    memoryDraftContextRef.current = null;
+    resetMemoryRequestKeys();
+  }
+
+  function changeQuickRecordSource(source: QuickRecordSource) {
+    if (source === quickRecordSource) return;
+
+    cancelMemoryFlowOperation();
+    setQuickRecordSource(source);
+    setQuickRecordFile(null);
+    setUploadedQuickRecordAsset(null);
+    resetAssetUploadRequestKey();
+    clearMemoryDraftState();
+  }
+
+  function changeQuickRecordFile(file: File | null) {
+    cancelMemoryFlowOperation();
+    setQuickRecordFile(file);
+    setUploadedQuickRecordAsset(null);
+    resetAssetUploadRequestKey();
+    clearMemoryDraftState();
+  }
+
   function memoryDraftRequestKey(signature: string) {
     const current = memoryDraftRequestRef.current;
     if (current?.signature === signature) return current.key;
 
     const key = crypto.randomUUID();
     memoryDraftRequestRef.current = { key, signature };
+    return key;
+  }
+
+  function assetUploadRequestKey(signature: string) {
+    const current = assetUploadRequestRef.current;
+    if (current?.signature === signature) return current.key;
+
+    const key = crypto.randomUUID();
+    assetUploadRequestRef.current = { key, signature };
     return key;
   }
 
@@ -743,8 +839,8 @@ export function GalaxyWorkspace({
       && current.requestId === operation.requestId;
   }
 
-  function applyActiveBook(book: LegacyBookDetail, sourceLabels: string[]) {
-    setActiveBook({ ...book, sourceLabels });
+  function applyActiveBook(book: LegacyBookDetail, sourceLabelList: string[]) {
+    setActiveBook({ ...book, sourceLabelList });
     setBookTitleDraft(book.title);
     setBookBodyDraft(book.body);
     setBookVisibility(book.visibility);
@@ -773,10 +869,10 @@ export function GalaxyWorkspace({
     try {
       const book = await getLegacyBook(bookId);
       if (!isCurrentBookOperation(operation)) return;
-      const sourceLabels = knownSourceLabels.length > 0
+      const sourceLabelList = knownSourceLabels.length > 0
         ? knownSourceLabels
         : Object.values(book.sourceLabels);
-      applyActiveBook(book, sourceLabels);
+      applyActiveBook(book, sourceLabelList);
       await loadActiveBookShares(bookId, operation);
     } catch (error) {
       if (isCurrentBookOperation(operation)) setBookError(errorMessage(error));
@@ -786,7 +882,7 @@ export function GalaxyWorkspace({
   }
 
   async function generateLegacyBook() {
-    if (!hasConfirmedResonanceThisSession || !confirmedResonanceSourceMemoryIds) {
+    if (!hasConfirmedResonance || !confirmedResonanceSourceMemoryIds) {
       setBookError(bookWorkshopLockMessage);
       return;
     }
@@ -812,20 +908,24 @@ export function GalaxyWorkspace({
     try {
       const created = await createLegacyBook(input, requestKey);
       if (!isCurrentBookOperation(operation)) return;
-      const sourceLabels = created.draft.sourceMemoryIds.map((id) => (
+      const sourceLabels = Object.fromEntries(created.draft.sourceMemoryIds.map((id) => [
+        id,
         created.draft.sourceLabels?.[id]
-        ?? confirmedBookSources.find((source) => source.id === id)?.title
-        ?? "已授权记忆"
-      ));
+          ?? confirmedBookSources.find((source) => source.id === id)?.title
+          ?? "已授权记忆",
+      ]));
       const createdDetail: ActiveLegacyBook = {
         id: created.id,
         title: created.title,
+        intro: created.draft.intro ?? "",
         body: created.body,
         sections: created.sections,
+        media: [],
         status: created.status,
         version: 0,
         visibility: input.visibility,
         sourceLabels,
+        sourceLabelList: Object.values(sourceLabels),
       };
       setActiveBook(createdDetail);
       setBookTitleDraft(created.title);
@@ -834,7 +934,7 @@ export function GalaxyWorkspace({
         const next = { id: created.id, title: created.title, status: "ready" as const, memoryCount: created.draft.sourceMemoryIds.length };
         return [next, ...current.filter((book) => book.id !== created.id)];
       });
-      await openSavedBook(created.id, sourceLabels);
+      await openSavedBook(created.id, Object.values(sourceLabels));
     } catch (error) {
       const idempotencyExpired = isExpiredIdempotencyError(error);
       if (idempotencyExpired) {
@@ -1030,13 +1130,29 @@ export function GalaxyWorkspace({
     cancelMemoryFlowOperation();
     cancelResonanceScanOperation();
     const step = routeSteps[index];
+    if (!step) return;
     setActiveRouteStep(index);
     setSelectedPlanetId(null);
     setClosingPlanetId(null);
 
     if (step.action === "planet") {
-      focusAnchorPlanet(anchorPlanetIds.parent);
-      openAnchorPlanet(anchorPlanetIds.parent);
+      focusAnchorPlanet(step.targetId ?? null);
+      openAnchorPlanet(step.targetId ?? null);
+      return;
+    }
+
+    if (step.action === "create") {
+      setStarMapEditorOpen(true);
+      return;
+    }
+
+    if (step.action === "memory" && step.targetId) {
+      openConfirmedMemory(step.targetId);
+      return;
+    }
+
+    if (step.action === "quickRecord") {
+      openPanel("quickRecord", step.targetId);
       return;
     }
 
@@ -1045,21 +1161,21 @@ export function GalaxyWorkspace({
       return;
     }
 
-    setRoamingPlanetId(null);
-    setActivePanel(step.action);
     if (step.action === "resonance") switchGalaxyZone("resonance", { panel: "resonance" });
   }
 
-  function openPanel(key: PanelKey) {
+  function openPanel(key: PanelKey, targetPlanetId?: string) {
     cancelMemoryFlowOperation();
     cancelResonanceScanOperation();
-    if (["memory1", "memory2", "memory3", "memory4"].includes(key)) {
+    if (key === "memory1") {
       setSelectedMemoryId(null);
     }
     if (key === "quickRecord") {
       const target =
+        galaxyPlanets.find((planet) => planet.id === targetPlanetId) ??
         galaxyPlanets.find((planet) => planet.id === selectedPlanetId || planet.id === roamingPlanetId) ??
         galaxyPlanets.find((planet) => planet.type === "self") ??
+        galaxyPlanets[0] ??
         null;
 
       if (!target) {
@@ -1067,7 +1183,12 @@ export function GalaxyWorkspace({
         return;
       }
 
-      const draftSignature = buildMemoryDraftSignature(target.id, quickRecordContent.trim());
+      const draftSignature = buildMemoryDraftSignature(
+        target.id,
+        quickRecordSource,
+        quickRecordContent.trim(),
+        quickRecordFile,
+      );
       const existingDraft = memoryDraftContextRef.current;
       const shouldRetainDraft = Boolean(
         memoryDraftId &&
@@ -1077,12 +1198,7 @@ export function GalaxyWorkspace({
 
       setQuickRecordTargetPlanetId(target.id);
       if (!shouldRetainDraft) {
-        setMemoryReview(null);
-        setMemoryDraftId(null);
-        setMemoryJob(null);
-        setMemoryFlowError(null);
-        memoryDraftContextRef.current = null;
-        resetMemoryRequestKeys();
+        clearMemoryDraftState();
       }
     }
     setActivePanel(key);
@@ -1111,7 +1227,7 @@ export function GalaxyWorkspace({
     zone: GalaxyZoneKey,
     options: { panel?: PanelKey | null; preserveSelectedPlanet?: boolean } = {},
   ) {
-    if (zone === "books" && !hasConfirmedResonanceThisSession && !canOpenSavedBooks) {
+    if (zone === "books" && !hasConfirmedResonance && !canOpenSavedBooks) {
       setToast(bookWorkshopLockMessage);
       return false;
     }
@@ -1140,8 +1256,13 @@ export function GalaxyWorkspace({
 
   async function lightMemoryStar() {
     const content = quickRecordContent.trim();
-    if (content.length === 0) {
+    if (quickRecordSource === "text" && content.length === 0) {
       setToast("先写下一句话，再点亮记忆星");
+      return;
+    }
+
+    if (quickRecordSource !== "text" && !quickRecordFile) {
+      setMemoryFlowError("先选择一份真实来源，再发送给 AI 整理");
       return;
     }
 
@@ -1150,7 +1271,12 @@ export function GalaxyWorkspace({
       return;
     }
 
-    const draftSignature = buildMemoryDraftSignature(quickRecordTarget.id, content);
+    const draftSignature = buildMemoryDraftSignature(
+      quickRecordTarget.id,
+      quickRecordSource,
+      content,
+      quickRecordFile,
+    );
     const existingDraft = memoryDraftContextRef.current;
     if (
       memoryDraftId &&
@@ -1162,11 +1288,7 @@ export function GalaxyWorkspace({
     }
 
     if (memoryDraftId || existingDraft) {
-      setMemoryDraftId(null);
-      setMemoryJob(null);
-      setMemoryReview(null);
-      memoryDraftContextRef.current = null;
-      resetMemoryRequestKeys();
+      clearMemoryDraftState();
     }
 
     const operation = beginMemoryFlowOperation();
@@ -1174,9 +1296,29 @@ export function GalaxyWorkspace({
     setMemoryFlowLoading(true);
     setMemoryFlowError(null);
     try {
+      let assetIds: string[] | undefined;
+      if (quickRecordSource !== "text") {
+        const cachedAsset = uploadedQuickRecordAsset?.signature === draftSignature
+          ? uploadedQuickRecordAsset.asset
+          : null;
+        const asset = cachedAsset ?? await uploadLegacyAsset({
+          file: quickRecordFile as File,
+          planetId: quickRecordTarget.id,
+          kind: quickRecordSource,
+          visibility: "private",
+          idempotencyKey: assetUploadRequestKey(draftSignature),
+          signal: operation.controller.signal,
+        });
+
+        if (!isCurrentMemoryFlowOperation(operation)) return;
+        if (!cachedAsset) setUploadedQuickRecordAsset({ asset, signature: draftSignature });
+        assetIds = [asset.id];
+      }
+
       const draft = await createLegacyMemoryDraft({
         planetId: quickRecordTarget.id,
-        sourceText: content,
+        sourceText: quickRecordSource === "text" ? content : "",
+        ...(assetIds ? { assetIds } : {}),
         visibility: "family",
         allowResonance: true,
         allowBook: true,
@@ -1242,7 +1384,7 @@ export function GalaxyWorkspace({
 
       if (memoryJob.status === "failed") {
         await startMemoryExtraction(memoryDraftId, operation, true);
-      } else if (memoryJob.status === "completed") {
+      } else if (memoryJob.status === "completed" || memoryJob.status === "succeeded") {
         await loadMemoryReview(memoryDraftId, operation);
       } else if (memoryJob.status === "queued" || memoryJob.status === "processing") {
         const completed = await waitForMemoryExtraction(memoryJob, (nextJob) => {
@@ -1292,20 +1434,6 @@ export function GalaxyWorkspace({
         visibility: confirmed.visibility,
         summary: confirmed.summary ?? reviewSummary,
       };
-      setExtractResult({
-        memory,
-        suggestion: {
-          title: memory.title,
-          occurredAt: memory.occurredAt,
-          location: memory.location,
-          people: memory.people,
-          emotions: [],
-          summary: memory.summary,
-          uncertainFields: [],
-        },
-        sourceText: confirmed.sourceText ?? quickRecordContent,
-        status: "confirmed",
-      });
       setLitMemories((current) => [...current.filter((item) => item.id !== memory.id), memory]);
       setGalaxyPlanets((current) => current.map((planet) => (
         planet.id === memory.planetId
@@ -1503,6 +1631,46 @@ export function GalaxyWorkspace({
     }
   }
 
+  async function saveSelectedPlanetCover() {
+    if (!selectedPlanet) {
+      setToast("请先选择一颗家人星球，再保存封面");
+      return;
+    }
+
+    if (!selectedPlanetCoverFile) {
+      setToast("请先选择一张图片作为星球封面");
+      return;
+    }
+
+    setPlanetCoverSaving(true);
+    try {
+      const asset = await uploadLegacyAsset({
+        file: selectedPlanetCoverFile,
+        planetId: selectedPlanet.id,
+        kind: "planet_cover",
+        visibility: "private",
+        idempotencyKey: assetUploadRequestKey(JSON.stringify({
+          planetId: selectedPlanet.id,
+          kind: "planet_cover",
+          name: selectedPlanetCoverFile.name,
+          size: selectedPlanetCoverFile.size,
+          lastModified: selectedPlanetCoverFile.lastModified,
+          type: selectedPlanetCoverFile.type,
+        })),
+      });
+
+      if (await persistPlanetChange(selectedPlanet, { coverAssetId: asset.id })) {
+        setSelectedPlanetCoverFile(null);
+        setSelectedPlanetCoverPreviewUrl(null);
+        setToast("星球封面已保存");
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "上传星球封面失败，请稍后重试");
+    } finally {
+      setPlanetCoverSaving(false);
+    }
+  }
+
   function editPlanetTheme(planetId: string) {
     const planet = galaxyPlanets.find((item) => item.id === planetId);
     if (!planet) return;
@@ -1511,7 +1679,27 @@ export function GalaxyWorkspace({
     setClosingPlanetId(null);
     switchGalaxyZone("workshop", { preserveSelectedPlanet: true });
     setSelectedWorkshopBg(planet.theme);
+    setSelectedPlanetCoverFile(null);
+    setSelectedPlanetCoverPreviewUrl(null);
     setToast("星球主题实验室已就近展开");
+  }
+
+  function selectPlanetCover(file: File | null) {
+    if (!file) {
+      setSelectedPlanetCoverFile(null);
+      setSelectedPlanetCoverPreviewUrl(null);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setToast("请选择 JPG、PNG、WebP 或 AVIF 格式的图片");
+      return;
+    }
+
+    setSelectedPlanetCoverFile(file);
+    setSelectedPlanetCoverPreviewUrl(
+      typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : null,
+    );
   }
 
   function configurePlanetPrivacy(planet: Planet) {
@@ -1701,16 +1889,6 @@ export function GalaxyWorkspace({
     );
   }
 
-  function toggleLinkVisibility(linkId: string) {
-    setGalaxyLinks((current) =>
-      current.map((link) =>
-        link.id === linkId
-          ? { ...link, status: link.status === "hidden" ? "confirmed" : "hidden" }
-          : link,
-      ),
-    );
-  }
-
   async function addCustomLinkFromSelected() {
     if (!selectedPlanet) {
       setToast("请先点选一颗星球，再添加自定义星轨");
@@ -1813,7 +1991,7 @@ export function GalaxyWorkspace({
           value={activeZone}
           onChange={(event) => switchGalaxyZone(event.target.value as GalaxyZoneKey)}
         >
-          {galaxyZones.map((zone) => (
+          {galaxyNavigation.map((zone) => (
             <option key={zone.key} value={zone.key}>
               {zone.label}
             </option>
@@ -1822,7 +2000,7 @@ export function GalaxyWorkspace({
 
         <p className="nav-label">星系图层</p>
         <nav aria-label="星系图层">
-          {galaxyZones.map((zone) => (
+          {galaxyNavigation.map((zone) => (
             <button
               aria-label={zone.label}
               className={`nav-btn ${activeZone === zone.key ? "active" : ""}`}
@@ -1952,7 +2130,7 @@ export function GalaxyWorkspace({
           <div className="assistant-note">
             <Sparkles size={15} />
             <span>
-              星图助手建议：先靠近妈妈的星球，点亮春节记忆星，再沿共鸣星轨写成一页家书。
+              星图助手建议：{routeSteps[0]?.detail ?? "从一颗真实的家人星球开始，逐步点亮记忆、确认共鸣，再写成家书。"}
             </span>
           </div>
 
@@ -1962,6 +2140,7 @@ export function GalaxyWorkspace({
               collapsed={routeCollapsed}
               onRunStep={runRouteStep}
               onToggle={() => setRouteCollapsed((current) => !current)}
+              steps={routeSteps}
             />
           ) : null}
 
@@ -1974,7 +2153,6 @@ export function GalaxyWorkspace({
               resonanceSourcePlanet={resonanceSourcePlanet}
               resonanceTargetPlanet={resonanceTargetPlanet}
               litMemories={litMemories}
-              anchorPlanetIds={anchorPlanetIds}
               onGo={goToZone}
               onOpenConfirmedMemory={openConfirmedMemory}
               onOpenPanel={openPanel}
@@ -2001,6 +2179,11 @@ export function GalaxyWorkspace({
               onSaveSelectedPlanetTheme={(theme) => {
                 if (selectedPlanet) void persistPlanetChange(selectedPlanet, { theme });
               }}
+              planetCoverSaving={planetCoverSaving}
+              selectedPlanetCoverFile={selectedPlanetCoverFile}
+              selectedPlanetCoverPreviewUrl={selectedPlanetCoverPreviewUrl}
+              onSaveSelectedPlanetCover={() => void saveSelectedPlanetCover()}
+              onSelectPlanetCover={selectPlanetCover}
               activeBook={activeBook}
               bookBodyDraft={bookBodyDraft}
               bookError={bookError}
@@ -2010,7 +2193,7 @@ export function GalaxyWorkspace({
               bookTitleDraft={bookTitleDraft}
               bookVisibility={bookVisibility}
               canCreateBook={
-                hasConfirmedResonanceThisSession
+                hasConfirmedResonance
                 && confirmedBookSources.length > 0
                 && confirmedBookSources.length === confirmedResonanceSourceMemoryIds?.length
               }
@@ -2062,7 +2245,6 @@ export function GalaxyWorkspace({
                 onClose={() => setStarMapEditorOpen(false)}
                 onRemovePlanet={removePlanet}
                 onRestorePlanet={restorePlanet}
-                onToggleLink={toggleLinkVisibility}
                 onToggleLinkKind={toggleLinkKind}
                 planets={galaxyPlanets}
                 selectedPlanet={selectedPlanet}
@@ -2076,8 +2258,10 @@ export function GalaxyWorkspace({
       <AnimatePresence>
         <SidePanel
           activePanel={activePanel}
-          extractResult={extractResult}
+          litMemories={litMemories}
           quickRecordContent={quickRecordContent}
+          quickRecordFile={quickRecordFile}
+          quickRecordSource={quickRecordSource}
           loading={memoryFlowLoading}
           memoryFlowError={memoryFlowError}
           memoryPrimaryActionLabel={memoryPrimaryActionLabel}
@@ -2100,6 +2284,8 @@ export function GalaxyWorkspace({
             void confirmMemoryStar();
           }}
           onQuickRecordChange={setQuickRecordContent}
+          onQuickRecordFileChange={changeQuickRecordFile}
+          onQuickRecordSourceChange={changeQuickRecordSource}
           onReviewSummaryChange={setReviewSummary}
           onReviewTitleChange={setReviewTitle}
           onRetryMemoryExtraction={() => {
@@ -2110,7 +2296,6 @@ export function GalaxyWorkspace({
           onPersistPlanetChange={persistPlanetChange}
           onOpenPanel={openPanel}
           onSelectTheme={selectThemeFromNebula}
-          onToast={setToast}
           selectedPlanet={selectedPlanet}
         />
       </AnimatePresence>
@@ -2127,12 +2312,14 @@ export function GalaxyWorkspace({
       ) : null}
       {roamingPlanet ? (
         <PlanetRoamingOverlay
+          memories={litMemories}
           planet={roamingPlanet}
           onBook={() => {
             if (!switchGalaxyZone("books")) return;
             setToast("已从星球漫游带入家书工坊");
           }}
           onClose={() => setRoamingPlanetId(null)}
+          onConfigurePrivacy={() => configurePlanetPrivacy(roamingPlanet)}
           onQuickRecord={() => {
             setRoamingPlanetId(null);
             openPanel("quickRecord");
@@ -2174,7 +2361,6 @@ export function GalaxyWorkspace({
 function ZoneScene({
   activeZone,
   activeBook,
-  anchorPlanetIds,
   bookBodyDraft,
   bookError,
   bookLoading,
@@ -2228,18 +2414,17 @@ function ZoneScene({
   onRevokeShare,
   onSaveBook,
   onSaveSelectedPlanetTheme,
+  onSaveSelectedPlanetCover,
+  onSelectPlanetCover,
+  planetCoverSaving,
+  selectedPlanetCoverFile,
+  selectedPlanetCoverPreviewUrl,
   setBookBodyDraft,
   setBookTitleDraft,
   setBookVisibility,
 }: {
   activeZone: GalaxyZoneKey;
   activeBook: ActiveLegacyBook | null;
-  anchorPlanetIds: {
-    self: string | null;
-    parent: string | null;
-    memorial: string | null;
-    public: string | null;
-  };
   bookBodyDraft: string;
   bookError: string | null;
   bookLoading: boolean;
@@ -2296,35 +2481,35 @@ function ZoneScene({
   onRevokeShare: (token: string) => void;
   onSaveBook: () => void;
   onSaveSelectedPlanetTheme: (theme: string) => void;
+  onSaveSelectedPlanetCover: () => void;
+  onSelectPlanetCover: (file: File | null) => void;
+  planetCoverSaving: boolean;
+  selectedPlanetCoverFile: File | null;
+  selectedPlanetCoverPreviewUrl: string | null;
 }) {
   if (activeZone === "privacy") {
     return (
       <>
         <ScopeRings />
-        <ScenePlanetButton
-          badge="私"
-          className="me private-planet"
-          label="私密核心"
-          left="50%"
-          onClick={() => onOpenPanel("scopePrivate")}
-          top="50%"
-        />
-        <ScenePlanetButton
-          badge="家"
-          className="mom"
-          label="家庭可见"
-          left="32%"
-          onClick={() => onOpenPanel("scopeFamily")}
-          top="44%"
-        />
-        <ScenePlanetButton
-          badge="公"
-          className="friend public-planet"
-          label="公开分享"
-          left="74%"
-          onClick={() => onOpenPanel("scopePublic")}
-          top="36%"
-        />
+        {planets.length > 0 ? planets.map((planet) => {
+          const presentationType = getPlanetPresentationType(planet);
+          return (
+            <ScenePlanetButton
+              badge={planetBadgeByType[presentationType]}
+              className={planetClassByType[presentationType]}
+              coverAssetId={planet.coverAssetId}
+              key={planet.id}
+              label={planet.name}
+              left={`${planet.position.x}%`}
+              onClick={() => onConfigurePlanetPrivacy(planet)}
+              top={`${planet.position.y}%`}
+            />
+          );
+        }) : (
+          <section className="scene-empty-state" role="status">
+            先创建一颗家人星球，再为它设置可见范围。
+          </section>
+        )}
         <SceneHint
           subtitle="私密、家庭、公开不是开关，而是三层轨道"
           title="每颗星球都有自己的光照范围"
@@ -2334,51 +2519,26 @@ function ZoneScene({
   }
 
   if (activeZone === "memorial") {
+    const memorialPlanets = planets.filter((planet) => getPlanetPresentationType(planet) === "memorial");
     return (
       <>
-        <svg className="links" viewBox="0 0 1000 700" preserveAspectRatio="none" aria-hidden="true">
-          <line className="link-ancestor" x1="275" x2="500" y1="259" y2="361" />
-          <line className="link-ancestor" x1="730" x2="500" y1="252" y2="361" />
-          <line className="link-family" x1="500" x2="500" y1="361" y2="539" />
-        </svg>
-        <ScenePlanetButton
-          badge="念"
-          className="ancestor memorial-planet has-ring"
-          label="外婆的纪念星"
-          left="27.5%"
-          onClick={() => onOpenPlanet(anchorPlanetIds.memorial)}
-          top="37%"
-        />
-        <ScenePlanetButton
-          badge="念"
-          className="dad memorial-planet"
-          label="外公的纪念星"
-          left="73%"
-          onClick={() => onOpenPanel("grandpa")}
-          top="36%"
-        />
-        <ScenePlanetButton
-          badge="家"
-          className="mom"
-          label="妈妈"
-          left="50%"
-          onClick={() => onOpenPlanet(anchorPlanetIds.parent)}
-          top="51.5%"
-        />
-        <ScenePlanetButton
-          badge="私"
-          className="me"
-          label="我"
-          left="50%"
-          onClick={() => onOpenPlanet(anchorPlanetIds.self)}
-          top="77%"
-        />
-        <SparkButton
-          label="家族传承星云"
-          left="50%"
-          onClick={() => onOpenPanel("legacy")}
-          top="28%"
-        />
+        <PlanetLinkField links={planetLinks} planets={memorialPlanets} />
+        {memorialPlanets.length > 0 ? memorialPlanets.map((planet) => (
+          <ScenePlanetButton
+            badge="念"
+            className={planetClassByType[getPlanetPresentationType(planet)]}
+            coverAssetId={planet.coverAssetId}
+            key={planet.id}
+            label={planet.name}
+            left={`${planet.position.x}%`}
+            onClick={() => onOpenPlanet(planet.id)}
+            top={`${planet.position.y}%`}
+          />
+        )) : (
+          <section className="scene-empty-state" role="status">
+            当前还没有纪念星
+          </section>
+        )}
         <SceneHint
           subtitle="他们的生命周期会凝成纪念星，照亮后来的星球"
           title="已过世的家人，不会从星系里消失"
@@ -2390,60 +2550,22 @@ function ZoneScene({
   if (activeZone === "workshop") {
     return (
       <div className="workshop-board">
-        <section className="workshop-panel">
-          <p className="panel-kicker">星球工坊</p>
-          <h2>调整星系气质，不改变故事本身</h2>
-          <p>这里模拟 demo 的主题实验室。选择星域、背景和星球材质后，可以应用到当前星域，也可以直接预览该星域。</p>
-          <PresetGrid
-            current={selectedWorkshopZone}
-            items={[
-              ["galaxy", "我的星系", "温暖、家庭关系、低速漂浮"],
-              ["memories", "记忆星群", "明亮碎片、星点跳动、轨道更密"],
-              ["resonance", "共鸣星轨", "双星牵引、脉冲连线、对比更强"],
-              ["memorial", "纪念星域", "克制、低饱和、慢速光晕"],
-            ]}
-            onSelect={(value) => setSelectedWorkshopZone(value as GalaxyZoneKey)}
-          />
-        </section>
-        <section className="workshop-panel">
-          <p className="panel-kicker">背景主题</p>
-          {selectedPlanet ? <p>正在调整「{selectedPlanet.name}」· 当前星球主题：{selectedPlanet.theme}</p> : null}
-          <PresetGrid
-            current={selectedWorkshopBg}
-            items={[
-              ["家书暖夜", "家书暖夜", "默认家庭叙事底色"],
-              ["极光蓝绿", "极光蓝绿", "适合旅行与成长"],
-              ["橘粉黄昏", "橘粉黄昏", "适合团圆与伴侣"],
-              ["深空墨蓝", "深空墨蓝", "适合纪念与私密"],
-            ]}
-            onSelect={setSelectedWorkshopBg}
-          />
-          <p className="panel-kicker">星球材质</p>
-          <PresetGrid
-            current={selectedWorkshopMaterial}
-            items={[
-              ["柔光釉面", "柔光釉面", "更像成熟产品默认材质"],
-              ["晶体折光", "晶体折光", "适合共鸣星轨"],
-              ["胶片颗粒", "胶片颗粒", "适合老照片与记忆"],
-              ["纪念石纹", "纪念石纹", "适合纪念星域"],
-            ]}
-            onSelect={setSelectedWorkshopMaterial}
-          />
-          <div className="book-actions">
-            {selectedPlanet ? (
-              <button className="primary" onClick={() => onSaveSelectedPlanetTheme(selectedWorkshopBg)} type="button">
-                保存星球主题
-              </button>
-            ) : (
-              <button className="primary" onClick={() => onToast("星球主题已应用")} type="button">
-                应用到当前星域
-              </button>
-            )}
-            <button className="secondary" onClick={() => onGo(selectedWorkshopZone)} type="button">
-              预览该星域
-            </button>
-          </div>
-        </section>
+        <PlanetThemeStudio
+          coverSaving={planetCoverSaving}
+          onPreviewZone={() => onGo(selectedWorkshopZone)}
+          onSaveCover={onSaveSelectedPlanetCover}
+          onSaveTheme={() => onSaveSelectedPlanetTheme(selectedWorkshopBg)}
+          onSelectCover={onSelectPlanetCover}
+          onSelectMaterial={setSelectedWorkshopMaterial}
+          onSelectTheme={setSelectedWorkshopBg}
+          onSelectZone={setSelectedWorkshopZone}
+          previewCoverUrl={selectedPlanetCoverPreviewUrl}
+          selectedCoverFile={selectedPlanetCoverFile}
+          selectedMaterial={selectedWorkshopMaterial}
+          selectedPlanet={selectedPlanet}
+          selectedTheme={selectedWorkshopBg}
+          selectedZone={selectedWorkshopZone}
+        />
       </div>
     );
   }
@@ -2452,29 +2574,23 @@ function ZoneScene({
     return (
       <>
         <div className="orbit memory-orbit" />
-        <ScenePlanetButton
-          badge="家"
-          className="mom public-planet has-ring"
-          label="妈妈的星球"
-          left="50%"
-          onClick={() => onOpenPlanet(anchorPlanetIds.parent)}
-          top="50%"
-        />
-        <MemoryButton label="新家里的第一个除夕" left="50%" onClick={() => onOpenPanel("memory1")} top="25%" variant="coral" />
-        <MemoryButton label="生日卡片" left="31%" onClick={() => onOpenPanel("memory2")} top="63%" />
-        <MemoryButton label="云南旅行" left="68%" onClick={() => onOpenPanel("memory3")} top="66%" variant="blue" />
-        <MemoryButton label="外婆的菜谱" left="18%" onClick={() => onOpenPanel("memory4")} top="47%" variant="ancestor-light" />
-        {litMemories.map((memory, index) => (
+        {litMemories.length > 0 ? litMemories.map((memory, index) => (
           <MemoryButton
             key={memory.id}
             label={memory.title}
-            left={`${42 + index * 8}%`}
+            left={`${32 + (index % 5) * 14}%`}
             onClick={() => onOpenConfirmedMemory(memory.id)}
-            top={`${78 - index * 6}%`}
-            variant="coral"
+            top={`${28 + Math.floor(index / 5) * 28}%`}
+            variant={index % 2 === 0 ? "coral" : "blue"}
           />
-        ))}
-        <SparkButton label="共鸣星轨正在生成" left="76%" onClick={() => onGo("resonance")} top="34%" />
+        )) : (
+          <section className="scene-empty-state" role="status">
+            当前还没有已确认的记忆星
+          </section>
+        )}
+        {resonanceCandidate ? (
+          <SparkButton label="查看待确认共鸣" left="76%" onClick={() => onGo("resonance")} top="34%" />
+        ) : null}
         <SceneHint
           subtitle="点击光点查看故事；新的记忆会自然进入轨道"
           title="记忆不是表单，是一颗颗被点亮的星"
@@ -2510,6 +2626,7 @@ function ZoneScene({
           <ScenePlanetButton
             badge={planetBadgeByType[getPlanetPresentationType(resonanceSourcePlanet)]}
             className={planetClassByType[getPlanetPresentationType(resonanceSourcePlanet)]}
+            coverAssetId={resonanceSourcePlanet.coverAssetId}
             label={resonanceSourcePlanet.name}
             left="28.5%"
             onClick={() => onOpenPlanet(resonanceSourcePlanet.id)}
@@ -2520,6 +2637,7 @@ function ZoneScene({
           <ScenePlanetButton
             badge={planetBadgeByType[getPlanetPresentationType(resonanceTargetPlanet)]}
             className={planetClassByType[getPlanetPresentationType(resonanceTargetPlanet)]}
+            coverAssetId={resonanceTargetPlanet.coverAssetId}
             label={resonanceTargetPlanet.name}
             left="71.5%"
             onClick={() => onOpenPlanet(resonanceTargetPlanet.id)}
@@ -2660,7 +2778,15 @@ function ZoneScene({
 
         {activeBook ? (
           <section className="book-preview" aria-label="真实家书详情">
-            <p>真实已保存家书</p>
+            <FamilyBookReader
+              body={bookBodyDraft || activeBook.body}
+              intro={activeBook.intro || "这封家书从已确认的家庭记忆中长出，留给以后每一次温柔的回望。"}
+              media={activeBook.media}
+              sections={activeBook.sections}
+              sourceLabels={activeBook.sourceLabels}
+              title={bookTitleDraft || activeBook.title}
+            />
+            <p>真实已保存家书 · 编辑后保存，纪念册预览会同步更新。</p>
             <label>
               家书标题
               <input aria-label="家书标题" onChange={(event) => setBookTitleDraft(event.target.value)} value={bookTitleDraft} />
@@ -2673,18 +2799,10 @@ function ZoneScene({
               <button className="primary" disabled={bookLoading} onClick={onSaveBook} type="button">保存家书修改</button>
             </div>
             {bookSaveError ? <p role="alert">{bookSaveError}</p> : null}
-            <div className="book-sections">
-              {activeBook.sections.map((section, index) => (
-                <article className="book-section" key={`${section.title}-${index}`}>
-                  <strong>{section.title}</strong>
-                  <p>{section.body}</p>
-                </article>
-              ))}
-            </div>
-            {activeBook.sourceLabels.length > 0 ? (
+            {activeBook.sourceLabelList.length > 0 ? (
               <div className="book-sections" aria-label="真实来源标签">
                 <strong>来源记忆</strong>
-                {activeBook.sourceLabels.map((label) => <span className="book-source" key={label}>{label}</span>)}
+                {activeBook.sourceLabelList.map((label) => <span className="book-source" key={label}>{label}</span>)}
               </div>
             ) : null}
 
@@ -2721,6 +2839,14 @@ function ZoneScene({
       <div className="orbit family-orbit" />
       <div className="orbit memory-orbit" />
 
+      {planets.length === 0 ? (
+        <section className="scene-empty-state" aria-label="空家庭星系">
+          <h2>先创建第一颗家人星球</h2>
+          <p>从一个真实的家人开始，之后的记忆星、共鸣星轨和家书都会从这里生长。</p>
+          <button className="primary" onClick={onOpenStarMapEditor} type="button">创建家人星球</button>
+        </section>
+      ) : null}
+
       {planets.map((planet) => (
         <GalaxyPlanetObject
           key={planet.id}
@@ -2754,9 +2880,9 @@ function ZoneScene({
         />
       ))}
 
-      <MemoryButton label="点开春节记忆星" left="43%" onClick={() => onOpenPanel("memory1")} top="32%" variant="coral" />
-      <MemoryButton label="点亮云南旅行记忆星" left="74%" onClick={() => onOpenPanel("memory3")} top="24%" variant="blue" />
-      <SparkButton label="推荐航线：共鸣星轨" left="50%" onClick={() => onGo("resonance")} top="25%" />
+      {litMemories.length > 0 ? (
+        <SparkButton label="查看真实共鸣候选" left="50%" onClick={() => onGo("resonance")} top="25%" />
+      ) : null}
 
       <SceneHint
         subtitle="自由靠近任意星球；第一次进入时，也可以跟随推荐航线"
@@ -2769,6 +2895,7 @@ function ZoneScene({
 function ScenePlanetButton({
   badge,
   className,
+  coverAssetId,
   label,
   left,
   onClick,
@@ -2776,6 +2903,7 @@ function ScenePlanetButton({
 }: {
   badge: string;
   className: string;
+  coverAssetId?: string | null;
   label: string;
   left: string;
   onClick: () => void;
@@ -2784,9 +2912,9 @@ function ScenePlanetButton({
   return (
     <button
       aria-label={label}
-      className={`planet ${className}`}
+      className={`planet ${className}${coverAssetId ? " has-cover" : ""}`}
       onClick={onClick}
-      style={{ left, top }}
+      style={{ left, top, ...planetCoverStyle(coverAssetId) }}
       type="button"
     >
       <span className="badge">{badge}</span>
@@ -2864,7 +2992,7 @@ function GalaxyPlanetObject({
   planet: Planet;
   selected: boolean;
 }) {
-  const style = { left: `${planet.position.x}%`, top: `${planet.position.y}%` };
+  const style = { left: `${planet.position.x}%`, top: `${planet.position.y}%`, ...planetCoverStyle(planet.coverAssetId) };
   const presentationType = getPlanetPresentationType(planet);
   const showActionRing = selected || closing;
 
@@ -2872,7 +3000,7 @@ function GalaxyPlanetObject({
     <>
       <button
         aria-label={`进入${planet.name}漫游`}
-        className={`${planetClassByType[presentationType]} ${selected ? "selected" : ""}`}
+        className={`${planetClassByType[presentationType]}${planet.coverAssetId ? " has-cover" : ""} ${selected ? "selected" : ""}`}
         onClick={() => onSelect(planet.id)}
         style={style}
         type="button"
@@ -3001,33 +3129,6 @@ function ScopeRings() {
   );
 }
 
-function PresetGrid({
-  current,
-  items,
-  onSelect,
-}: {
-  current: string;
-  items: Array<[string, string, string]>;
-  onSelect: (value: string) => void;
-}) {
-  return (
-    <div className="preset-grid">
-      {items.map(([value, title, description]) => (
-        <button
-          className={`preset ${current === value ? "selected" : ""}`}
-          key={value}
-          onClick={() => onSelect(value)}
-          type="button"
-        >
-          <i />
-          <strong>{title}</strong>
-          <span>{description}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function ThemeNebula({
   description,
   label,
@@ -3056,18 +3157,20 @@ function RouteCard({
   collapsed,
   onRunStep,
   onToggle,
+  steps,
 }: {
   activeStep: number;
   collapsed: boolean;
   onRunStep: (index: number) => void;
   onToggle: () => void;
+  steps: RouteStep[];
 }) {
   return (
     <article className={`route-card ${collapsed ? "collapsed" : ""}`} id="routeCard">
       <h2>新手推荐航线</h2>
       <p>这不是强制流程，只是一条第一次进入星系时更容易看见产品价值的观星路线。</p>
       <div className="route-steps">
-        {routeSteps.map((step, index) => (
+        {steps.map((step, index) => (
           <button
             className={`route-step ${activeStep === index ? "active" : ""}`}
             key={step.label}
@@ -3087,7 +3190,7 @@ function RouteCard({
           {collapsed ? "展开航线" : "收起航线"}
         </button>
         <button className="primary" onClick={() => onRunStep(0)} type="button">
-          开始靠近
+          {steps[0]?.action === "create" ? "开始创建" : "开始靠近"}
         </button>
       </div>
     </article>
@@ -3135,7 +3238,6 @@ function StarMapEditor({
   onClose,
   onRemovePlanet,
   onRestorePlanet,
-  onToggleLink,
   onToggleLinkKind,
   planets,
   selectedPlanet,
@@ -3148,7 +3250,6 @@ function StarMapEditor({
   onClose: () => void;
   onRemovePlanet: (planetId: string) => void;
   onRestorePlanet: (planetId: string) => void;
-  onToggleLink: (linkId: string) => void;
   onToggleLinkKind: (kind: PlanetLinkKind) => void;
   planets: Planet[];
   selectedPlanet: Planet | null;
@@ -3190,6 +3291,7 @@ function StarMapEditor({
 
       <section className="star-map-section">
         <h3>连接规则</h3>
+        <p className="panel-readonly">显示筛选仅影响本次浏览，不会改写已保存的家庭关系。</p>
         <div className="link-kind-grid">
           {(Object.keys(planetLinkKindLabels) as PlanetLinkKind[]).map((kind) => (
             <button
@@ -3210,12 +3312,9 @@ function StarMapEditor({
         <h3>星轨清单</h3>
         <div className="star-map-list">
           {links.map((link) => (
-            <button
-              aria-pressed={link.status !== "hidden"}
+            <article
               className={`star-link-row ${link.status === "hidden" ? "muted" : ""}`}
               key={link.id}
-              onClick={() => onToggleLink(link.id)}
-              type="button"
             >
               <span>
                 <strong>{link.label}</strong>
@@ -3224,7 +3323,7 @@ function StarMapEditor({
                 </small>
               </span>
               <em>{planetLinkKindLabels[link.kind]}</em>
-            </button>
+            </article>
           ))}
         </div>
       </section>
@@ -3322,8 +3421,10 @@ function ViewControls({
 
 function SidePanel({
   activePanel,
-  extractResult,
+  litMemories,
   quickRecordContent,
+  quickRecordFile,
+  quickRecordSource,
   loading,
   memoryFlowError,
   memoryPrimaryActionLabel,
@@ -3344,6 +3445,8 @@ function SidePanel({
   onLightMemory,
   onConfirmMemory,
   onQuickRecordChange,
+  onQuickRecordFileChange,
+  onQuickRecordSourceChange,
   onReviewSummaryChange,
   onReviewTitleChange,
   onRetryMemoryExtraction,
@@ -3352,12 +3455,13 @@ function SidePanel({
   onPersistPlanetChange,
   onOpenPanel,
   onSelectTheme,
-  onToast,
   selectedPlanet,
 }: {
   activePanel: PanelKey | null;
-  extractResult: MemoryExtractResponse | null;
+  litMemories: MemoryStar[];
   quickRecordContent: string;
+  quickRecordFile: File | null;
+  quickRecordSource: QuickRecordSource;
   loading: boolean;
   memoryFlowError: string | null;
   memoryPrimaryActionLabel: string;
@@ -3378,6 +3482,8 @@ function SidePanel({
   onLightMemory: () => void;
   onConfirmMemory: () => void;
   onQuickRecordChange: (value: string) => void;
+  onQuickRecordFileChange: (file: File | null) => void;
+  onQuickRecordSourceChange: (source: QuickRecordSource) => void;
   onReviewSummaryChange: (value: string) => void;
   onReviewTitleChange: (value: string) => void;
   onRetryMemoryExtraction: () => void;
@@ -3386,15 +3492,14 @@ function SidePanel({
   onPersistPlanetChange: (planet: Planet, changes: LegacyPlanetChanges) => Promise<boolean>;
   onOpenPanel: (key: PanelKey) => void;
   onSelectTheme: (theme: string) => void;
-  onToast: (message: string) => void;
   selectedPlanet: Planet | null;
 }) {
-  const mockMemory = extractResult?.memory ?? memoryStars[0];
-  const memoryKey = activePanel as MemoryPanelKey;
-
   if (!activePanel) return null;
 
   const sharedProps = { role: "complementary", "aria-label": "星图详情" };
+  const lifecycleMemories = selectedPlanet
+    ? litMemories.filter((memory) => memory.planetId === selectedPlanet.id)
+    : [];
 
   return (
     <motion.aside
@@ -3409,15 +3514,6 @@ function SidePanel({
         <X size={16} />
       </button>
 
-      {["me", "mom", "dad", "child", "friend", "grandpa", "legacy"].includes(activePanel) ? (
-        <ProfilePanel
-          activePanel={activePanel}
-          onGo={onGo}
-          onOpenPanel={onOpenPanel}
-          onSelectTheme={onSelectTheme}
-        />
-      ) : null}
-
       {["scopePrivate", "scopeFamily", "scopePublic"].includes(activePanel) ? (
         <ScopePanel
           activePanel={activePanel}
@@ -3428,7 +3524,7 @@ function SidePanel({
         />
       ) : null}
 
-      {["memory1", "memory2", "memory3", "memory4"].includes(activePanel) ? (
+      {activePanel === "memory1" ? (
         selectedMemoryId !== null ? (
           selectedMemory ? (
             <>
@@ -3476,43 +3572,8 @@ function SidePanel({
           )
         ) : (
           <>
-            <h2>{memoryPanelContent[memoryKey].title}</h2>
-            <div className="tags">
-              {memoryPanelContent[memoryKey].tags.map((tag) => (
-                <span className="tag" key={tag}>
-                  {tag}
-                </span>
-              ))}
-            </div>
-            <p>{memoryPanelContent[memoryKey].body}</p>
-            <div className="ai-card">
-              <strong>AI 已整理为记忆星：</strong>
-              <p>
-                {activePanel === "memory1"
-                  ? `时间：${mockMemory.occurredAt}。地点：${mockMemory.location}。人物：${mockMemory.people.join("、")}。情绪：${mockMemory.emotions.join("、")}。`
-                  : memoryPanelContent[memoryKey].assist}
-              </p>
-            </div>
-            <div className="big-actions">
-              {activePanel === "memory1" ? (
-                <p className="panel-readonly">
-                  请从一颗已确认的记忆星发起共鸣扫描。
-                </p>
-              ) : null}
-              {activePanel === "memory3" ? (
-                <button className="primary" onClick={() => onSelectTheme("旅行星云")} type="button">
-                  进入旅行星云
-                </button>
-              ) : null}
-              {activePanel === "memory4" ? (
-                <button className="primary" onClick={() => onSelectTheme("纪念星册")} type="button">
-                  写成传承页
-                </button>
-              ) : null}
-              <button className="secondary" onClick={() => onOpenPanel("quickRecord")} type="button">
-                补充另一个视角
-              </button>
-            </div>
+            <h2>未找到这颗记忆星</h2>
+            <p>请从星图中选择一颗已确认的记忆星后再查看详情。</p>
           </>
         )
       ) : null}
@@ -3624,18 +3685,15 @@ function SidePanel({
             生命周期不再作为独立表单，而是这颗星球的时间轨道。出生、成长、成为父母、退休和纪念状态会改变星球光晕、轨道速度和可生成的家书主题。
           </p>
           <div className="lifecycle-orbit-panel">
-            {[
-              ["出生", "1968", "星球核心被点亮"],
-              ["成为母亲", "1998", "亲子星轨形成"],
-              ["新家除夕", "2018", "家庭共鸣增强"],
-              ["退休旅行", "2024", "旅行星云展开"],
-            ].map(([label, year, detail]) => (
-              <article key={label}>
-                <i>{year}</i>
-                <strong>{label}</strong>
-                <span>{detail}</span>
+            {lifecycleMemories.length > 0 ? lifecycleMemories.map((memory) => (
+              <article key={memory.id}>
+                <i>{memory.occurredAt || "未标注时间"}</i>
+                <strong>{memory.title}</strong>
+                <span>{memory.summary.trim() || "这条已确认记忆暂未填写摘要。"}</span>
               </article>
-            ))}
+            )) : (
+              <p className="panel-readonly">当前还没有已确认的阶段记忆</p>
+            )}
           </div>
           <div className="big-actions">
             <button className="primary" onClick={() => onOpenPanel("quickRecord")} type="button">
@@ -3708,22 +3766,53 @@ function SidePanel({
             </>
           ) : (
             <>
-              <textarea
-                aria-label="记忆内容"
-                className="panel-textarea"
-                onChange={(event) => onQuickRecordChange(event.target.value)}
-                value={quickRecordContent}
-              />
+              <label>
+                选择记忆来源
+                <select
+                  aria-label="选择记忆来源"
+                  className="panel-input"
+                  onChange={(event) => onQuickRecordSourceChange(event.target.value as QuickRecordSource)}
+                  value={quickRecordSource}
+                >
+                  <option value="text">写下一句话</option>
+                  <option value="image">上传一张照片</option>
+                  <option value="audio">上传一段语音</option>
+                  <option value="document">上传一份日记或文件</option>
+                </select>
+              </label>
+              {quickRecordSource === "text" ? (
+                <textarea
+                  aria-label="记忆内容"
+                  className="panel-textarea"
+                  onChange={(event) => onQuickRecordChange(event.target.value)}
+                  value={quickRecordContent}
+                />
+              ) : (
+                <label>
+                  {quickRecordSource === "image" ? "上传图片" : quickRecordSource === "audio" ? "上传语音" : "上传文件"}
+                  <input
+                    accept={quickRecordSource === "image" ? "image/*" : quickRecordSource === "audio" ? "audio/*" : ".pdf,.doc,.docx,.txt,.md"}
+                    aria-label={quickRecordSource === "image" ? "上传图片" : quickRecordSource === "audio" ? "上传语音" : "上传文件"}
+                    className="panel-input"
+                    onChange={(event) => onQuickRecordFileChange(event.target.files?.[0] ?? null)}
+                    type="file"
+                  />
+                  <span className="panel-readonly">
+                    {quickRecordFile ? `已选择：${quickRecordFile.name}` : "原始来源只用于本次授权整理，不会自动点亮或分享。"}
+                  </span>
+                </label>
+              )}
               <div className="ai-card">
                 <strong>整理预览</strong>
-                <p>AI 将尝试提取时间、地点、人物和事件；默认不公开，也不会自动确认或分享。</p>
+                <p>
+                  {quickRecordSource === "text"
+                    ? "AI 将尝试提取时间、地点、人物和事件；默认不公开，也不会自动确认或分享。"
+                    : "会先保存这份真实来源，再在你明确授权后交给 AI 整理；只有确认后才会进入星系轨道。"}
+                </p>
               </div>
               <div className="big-actions">
                 <button className="primary" disabled={loading} onClick={onLightMemory} type="button">
                   {loading ? "AI 整理中…" : memoryPrimaryActionLabel}
-                </button>
-                <button className="secondary" onClick={() => onToast("语音入口已准备")} type="button">
-                  改用语音
                 </button>
               </div>
             </>
@@ -3743,164 +3832,6 @@ function SidePanel({
   );
 }
 
-function ProfilePanel({
-  activePanel,
-  onGo,
-  onOpenPanel,
-  onSelectTheme,
-}: {
-  activePanel: PanelKey;
-  onGo: (zone: GalaxyZoneKey) => void;
-  onOpenPanel: (key: PanelKey) => void;
-  onSelectTheme: (theme: string) => void;
-}) {
-  if (activePanel === "mom") {
-    return (
-      <>
-        <h2>妈妈的星球</h2>
-        <div className="tags">
-          <span className="tag public">家庭可见</span>
-          <span className="tag">父母星球</span>
-          <span className="tag">1968-现在</span>
-        </div>
-        <p>妈妈的星球不只是档案，而是一片可以靠近的时光。这里有她自己的讲述，也有家人从不同方向照过来的记忆。</p>
-        <div className="signal-grid">
-          <div className="signal">
-            <strong>32</strong>
-            <span>已点亮记忆星</span>
-          </div>
-          <div className="signal">
-            <strong>1</strong>
-            <span>正在发光的共鸣星轨</span>
-          </div>
-        </div>
-        <div className="big-actions">
-          <button className="primary" onClick={() => onGo("memories")} type="button">
-            进入记忆星群
-          </button>
-          <button className="secondary" onClick={() => onGo("workshop")} type="button">
-            调整星球气质
-          </button>
-        </div>
-      </>
-    );
-  }
-
-  if (activePanel === "child") {
-    return (
-      <>
-        <h2>孩子的星轨</h2>
-        <div className="tags">
-          <span className="tag">父母可见</span>
-          <span className="tag">成长星球</span>
-          <span className="tag">里程碑</span>
-        </div>
-        <p>儿童星球更明亮，适合记录第一次、作品、生日和未来信。这里的交互应该像收藏星星，而不是填写成长表。</p>
-        <div className="big-actions">
-          <button className="primary" onClick={() => onOpenPanel("quickRecord")} type="button">
-            点亮成长瞬间
-          </button>
-          <button className="secondary" onClick={() => onSelectTheme("亲子成长")} type="button">
-            进入亲子成长星云
-          </button>
-        </div>
-      </>
-    );
-  }
-
-  if (activePanel === "friend") {
-    return (
-      <>
-        <h2>公开旅行星</h2>
-        <div className="tags">
-          <span className="tag public">公开星球</span>
-          <span className="tag">旅行星云</span>
-        </div>
-        <p>公开星球只展示你主动选择分享的章节。它可以很亮，但不会自动把私密记忆带到公开轨道上。</p>
-        <div className="big-actions">
-          <button className="primary" onClick={() => onSelectTheme("旅行星云")} type="button">
-            用旅行星云生成星册
-          </button>
-        </div>
-      </>
-    );
-  }
-
-  if (activePanel === "legacy") {
-    return (
-      <>
-        <h2>家族传承星云</h2>
-        <div className="tags">
-          <span className="tag memorial">纪念星汇总</span>
-          <span className="tag">三代关系</span>
-        </div>
-        <p>这里汇总已过世成员与在世成员之间的记忆连接，形成家族的时间河流。</p>
-        <div className="memory-list">
-          <article>
-            <strong>外婆 -&gt; 妈妈</strong>
-            <p>一手菜谱与春节传统。</p>
-          </article>
-          <article>
-            <strong>外公 -&gt; 我</strong>
-            <p>童年时的一次火车旅行。</p>
-          </article>
-        </div>
-        <div className="big-actions">
-          <button className="primary" onClick={() => onSelectTheme("纪念星册")} type="button">
-            写成传承家书
-          </button>
-        </div>
-      </>
-    );
-  }
-
-  if (activePanel === "grandpa") {
-    return (
-      <>
-        <h2>外公的纪念星</h2>
-        <div className="tags">
-          <span className="tag memorial">已故成员</span>
-          <span className="tag">1935-2018</span>
-        </div>
-        <p>纪念星域的语气会更克制，优先保留来源、时间和家人寄语，避免过度改写。</p>
-      </>
-    );
-  }
-
-  if (activePanel === "dad") {
-    return (
-      <>
-        <h2>爸爸的星球</h2>
-        <div className="tags">
-          <span className="tag">家庭可见</span>
-          <span className="tag">工作 / 旅行</span>
-        </div>
-        <p>爸爸的星球更安静，记忆节点少但很深。系统会优先提供慢节奏语音入口，而不是让他填写复杂信息。</p>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <h2>我的星球</h2>
-      <div className="tags">
-        <span className="tag private">私密核心</span>
-        <span className="tag">116 颗记忆星</span>
-        <span className="tag">1996-现在</span>
-      </div>
-      <p>这是你的核心星球。它可以和家人形成星轨，但每一次共享、共鸣和生成家书前都会再次确认。</p>
-      <div className="big-actions">
-        <button className="primary" onClick={() => onOpenPanel("quickRecord")} type="button">
-          点亮今天的记忆星
-        </button>
-        <button className="secondary" onClick={() => onGo("privacy")} type="button">
-          查看隐私星域
-        </button>
-      </div>
-    </>
-  );
-}
-
 function ScopePanel({
   activePanel,
   planet,
@@ -3914,11 +3845,12 @@ function ScopePanel({
     private: "私密核心",
     family: "家庭可见",
     selected: "指定家人可见",
-    public: "公开分享",
+    public: "公开可见（不创建链接）",
   };
   const visibilityControls = planet ? (
     <div className="big-actions">
       <p>当前可见范围：{visibilityLabel[planet.visibility]}</p>
+      <p>这里保存的是星球的可见范围，不会生成外部访问链接；需要公开时，请在家书工坊创建可撤回链接。</p>
       <button className="secondary" onClick={() => onSaveVisibility("private")} type="button">
         设为私密核心
       </button>
@@ -3926,7 +3858,7 @@ function ScopePanel({
         设为家庭可见
       </button>
       <button className="secondary" onClick={() => onSaveVisibility("public")} type="button">
-        设为公开分享
+        设为公开可见
       </button>
     </div>
   ) : null;
@@ -3938,15 +3870,7 @@ function ScopePanel({
         <div className="tags">
           <span className="tag private">仅自己可见</span>
         </div>
-        <p>适合个人日记、未整理的情绪、尚未确认的记忆。AI 可以帮你整理，但不会自动产生家庭共鸣。</p>
-        <div className="toggle-row">
-          <span>允许 AI 整理</span>
-          <i className="switch on" />
-        </div>
-        <div className="toggle-row">
-          <span>允许进入共鸣候选</span>
-          <i className="switch" />
-        </div>
+        <p>适合个人日记、未整理的情绪、尚未确认的记忆。AI 整理与进入共鸣的授权都在记忆确认步骤逐条完成；私密原始素材始终不会被公开。</p>
         {visibilityControls}
       </>
     );
@@ -3959,11 +3883,7 @@ function ScopePanel({
         <div className="tags">
           <span className="tag">家庭成员可见</span>
         </div>
-        <p>适合家庭旅行、节日、生日和亲子成长。共同记忆识别需要双方允许，生成家书前仍需确认。</p>
-        <div className="toggle-row">
-          <span>允许家庭成员查看</span>
-          <i className="switch on" />
-        </div>
+        <p>适合家庭旅行、节日、生日和亲子成长。共同记忆识别与家书生成都以每条已确认记忆的授权为准。</p>
         {visibilityControls}
       </>
     );
@@ -3973,17 +3893,9 @@ function ScopePanel({
     <>
       <h2>公开分享轨道</h2>
       <div className="tags">
-        <span className="tag public">链接可访问</span>
-      </div>
-      <p>只用于对外分享的家书页、旅行星册或故事长图。公开的是成册内容，不是整颗星球。</p>
-      <div className="toggle-row">
-        <span>公开成册内容</span>
-        <i className="switch on" />
-      </div>
-      <div className="toggle-row">
-        <span>公开原始素材</span>
-        <i className="switch" />
-      </div>
+          <span className="tag public">可创建家书链接</span>
+        </div>
+        <p>公开链接只能在家书工坊中为已确认家书创建，之后也可随时撤回；原始素材始终不会公开。</p>
       {visibilityControls}
     </>
   );
@@ -4036,19 +3948,30 @@ function RenamePlanetDialog({
 }
 
 function PlanetRoamingOverlay({
+  memories,
   planet,
   onBook,
   onClose,
+  onConfigurePrivacy,
   onQuickRecord,
 }: {
+  memories: MemoryStar[];
   planet: Planet;
   onBook: () => void;
   onClose: () => void;
+  onConfigurePrivacy: () => void;
   onQuickRecord: () => void;
 }) {
   const presentationType = getPlanetPresentationType(planet);
-  const nodes = storyNodes.filter((node) => node.planetId === planet.id);
-  const memories = memoryStars.filter((memory) => memory.planetId === planet.id);
+  const planetMemories = memories.filter((memory) => memory.planetId === planet.id);
+  const nodes: StoryNode[] = planetMemories.map((memory) => ({
+    id: memory.id,
+    planetId: memory.planetId,
+    year: memory.occurredAt || "未标注时间",
+    title: memory.title,
+    summary: memory.summary || "这条已确认记忆暂未填写摘要。",
+    sourceLabel: memory.location || "已确认记忆",
+  }));
   const [activeNodeId, setActiveNodeId] = useState(nodes[0]?.id);
   const [storySceneNodeId, setStorySceneNodeId] = useState<string | null>(null);
   const activeNode = nodes.find((node) => node.id === activeNodeId) ?? nodes[0];
@@ -4074,7 +3997,10 @@ function PlanetRoamingOverlay({
             <span>返回星系</span>
           </div>
           <div className="inner-planet-preview">
-            <div className={`inner-planet-body ${presentationType}`} />
+          <div
+            className={`inner-planet-body ${presentationType}${planet.coverAssetId ? " has-cover" : ""}`}
+            style={planetCoverStyle(planet.coverAssetId)}
+          />
           </div>
           <div>
             <h2>{planet.name}</h2>
@@ -4168,7 +4094,7 @@ function PlanetRoamingOverlay({
             </div>
           </div>
           <div className="memory-list">
-            {memories.map((memory) => (
+            {planetMemories.map((memory) => (
               <article key={memory.id}>
                 <strong>{memory.title}</strong>
                 <p>{memory.summary}</p>
@@ -4185,6 +4111,11 @@ function PlanetRoamingOverlay({
             onBook();
           }}
           onClose={() => setStorySceneNodeId(null)}
+          onConfigurePrivacy={onConfigurePrivacy}
+          onQuickRecord={() => {
+            setStorySceneNodeId(null);
+            onQuickRecord();
+          }}
         />
       ) : null}
     </motion.section>
@@ -4195,10 +4126,14 @@ function StorySceneOverlay({
   node,
   onAddToBook,
   onClose,
+  onConfigurePrivacy,
+  onQuickRecord,
 }: {
-  node: (typeof storyNodes)[number];
+  node: StoryNode;
   onAddToBook: () => void;
   onClose: () => void;
+  onConfigurePrivacy: () => void;
+  onQuickRecord: () => void;
 }) {
   return (
     <motion.section
@@ -4215,7 +4150,7 @@ function StorySceneOverlay({
         <X size={16} />
       </button>
       <div className="story-fragments">
-        <span>漂浮照片碎片</span>
+        <span>记忆光粒</span>
         <i />
         <b />
       </div>
@@ -4226,19 +4161,15 @@ function StorySceneOverlay({
         <div className="story-dust-tags">
           <span>时间：{node.year}</span>
           <span>来源：{node.sourceLabel}</span>
-          <span>情绪：团圆 / 安定</span>
         </div>
         <div className="big-actions">
-          <button className="primary" onClick={onClose} type="button">
+          <button className="primary" onClick={onQuickRecord} type="button">
             补充一句话
-          </button>
-          <button className="secondary" onClick={onClose} type="button">
-            邀请家人
           </button>
           <button className="secondary" onClick={onAddToBook} type="button">
             加入家书
           </button>
-          <button className="secondary" onClick={onClose} type="button">
+          <button className="secondary" onClick={onConfigurePrivacy} type="button">
             设权限
           </button>
         </div>

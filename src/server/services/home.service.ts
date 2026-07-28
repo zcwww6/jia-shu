@@ -82,6 +82,8 @@ export type PendingResonanceReadModel = {
   version: number;
 };
 
+export type ConfirmedResonanceReadModel = PendingResonanceReadModel;
+
 export type GrowingBookSummary = {
   id: string;
   title: string | null;
@@ -95,6 +97,7 @@ export type GalaxyReadModel = {
   confirmedMemories: MemoryStar[];
   relationships: PlanetLink[];
   pendingResonances: PendingResonanceReadModel[];
+  confirmedResonances: ConfirmedResonanceReadModel[];
   growingBooks: GrowingBookSummary[];
 };
 
@@ -144,6 +147,7 @@ export async function getHomeData(
     confirmedMemories: mapConfirmedMemories(homePlanets),
     relationships: mapRelationships(homePlanets, activePlanetIds),
     pendingResonances: mapPendingResonances(homePlanets),
+    confirmedResonances: mapConfirmedResonances(homePlanets, activePlanetIds),
     growingBooks: mapGrowingBooks(homePlanets),
   };
 }
@@ -395,6 +399,44 @@ function mapPendingResonances(planets: HomePlanetRecord[]): PendingResonanceRead
   }
 
   return [...candidates.values()];
+}
+
+function mapConfirmedResonances(
+  planets: HomePlanetRecord[],
+  activePlanetIds: Set<string>,
+): ConfirmedResonanceReadModel[] {
+  const resonances = new Map<string, ConfirmedResonanceReadModel>();
+
+  for (const planet of planets) {
+    for (const memory of planet.memories) {
+      for (const candidate of [...memory.resonanceSources, ...memory.resonanceTargets]) {
+        if (
+          candidate.status !== "confirmed"
+          || !candidate.sourceMemoryId
+          || !candidate.targetMemoryId
+          || typeof candidate.score !== "number"
+          || !Number.isFinite(candidate.score)
+          || typeof candidate.reason !== "string"
+          || !Number.isInteger(candidate.version)
+          || !isProjectableConfirmedResonance(candidate, activePlanetIds)
+          || resonances.has(candidate.id)
+        ) {
+          continue;
+        }
+
+        resonances.set(candidate.id, {
+          id: candidate.id,
+          sourceMemoryId: candidate.sourceMemoryId,
+          targetMemoryId: candidate.targetMemoryId,
+          score: candidate.score,
+          reason: candidate.reason,
+          version: candidate.version,
+        });
+      }
+    }
+  }
+
+  return [...resonances.values()];
 }
 
 function mapGrowingBooks(planets: HomePlanetRecord[]): GrowingBookSummary[] {

@@ -119,4 +119,31 @@ describe("legacy memory API bridge", () => {
       expect.objectContaining({ "Idempotency-Key": "job-replay-key-0001" }),
     ]);
   });
+
+  it("creates a memory draft from an already stored asset without inventing source text", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: "memory-asset-1", status: "draft", version: 1,
+    }), { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createLegacyMemoryDraft({
+      planetId: "planet-persisted-mom",
+      sourceText: "",
+      assetIds: ["asset-image-1"],
+      visibility: "family",
+      allowResonance: true,
+      allowBook: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/memories", expect.objectContaining({
+      body: JSON.stringify({
+        planetId: "planet-persisted-mom",
+        sourceText: "",
+        assetIds: ["asset-image-1"],
+        visibility: "family",
+        allowResonance: true,
+        allowBook: true,
+      }),
+    }));
+  });
 });

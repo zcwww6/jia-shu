@@ -84,6 +84,110 @@ describe("GalaxyWorkspace 星系内闭环缝合", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("没有持久化星球时显示真实空星系而不是示例家庭", () => {
+    render(<GalaxyWorkspace initialPlanets={[]} initialLinks={[]} />);
+
+    expect(screen.getByText("先创建第一颗家人星球")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入妈妈的星球漫游" })).not.toBeInTheDocument();
+    expect(screen.queryByText("新家里的第一个除夕")).not.toBeInTheDocument();
+  });
+
+  it("空账户的推荐航线从创建真实家人星球开始", () => {
+    render(<GalaxyWorkspace initialPlanets={[]} initialLinks={[]} />);
+
+    expect(screen.getByText("创建第一颗家人星球")).toBeInTheDocument();
+    expect(screen.queryByText("靠近妈妈的星球")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "开始创建" }));
+
+    expect(screen.getByRole("dialog", { name: "星图编辑" })).toBeInTheDocument();
+  });
+
+  it("在纪念与记忆章节只投影当前账户已保存的内容", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[{
+          id: "planet-mom-only", name: "妈妈星球", type: "parent", role: "妈妈",
+          visibility: "family", theme: "暖橘", position: { x: 56, y: 48 },
+          stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "真实的家庭星球。",
+        }]}
+        initialLinks={[]}
+        initialConfirmedMemories={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "纪念星域" }));
+    expect(screen.getByText("当前还没有纪念星")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "外婆的纪念星" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "记忆星群" }));
+    expect(screen.getByText("当前还没有已确认的记忆星")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "新家里的第一个除夕" })).not.toBeInTheDocument();
+  });
+
+  it("从全局记录入口会选择第一个已保存星球而不是填入演示文案", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[{
+          id: "planet-mom-only", name: "妈妈星球", type: "parent", role: "妈妈",
+          visibility: "family", theme: "暖橘", position: { x: 56, y: 48 },
+          stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "真实的家庭星球。",
+        }]}
+        initialLinks={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆星" }));
+
+    expect(screen.getByLabelText("当前记忆目标")).toHaveTextContent("目标星球：妈妈星球");
+    expect(screen.getByLabelText("记忆内容")).toHaveValue("");
+  });
+
+  it("生命周期只展示这颗星球已确认的真实记忆", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[{
+          id: "planet-mom-only", name: "妈妈星球", type: "parent", role: "妈妈",
+          visibility: "family", theme: "暖橘", position: { x: 56, y: 48 },
+          stats: { memoryStars: 0, resonanceTracks: 0, bookDrafts: 0 }, summary: "真实的家庭星球。",
+        }]}
+        initialLinks={[]}
+        initialConfirmedMemories={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "生命周期" }));
+
+    expect(screen.getByText("当前还没有已确认的阶段记忆")).toBeInTheDocument();
+    expect(screen.queryByText("退休旅行")).not.toBeInTheDocument();
+  });
+
+  it("在星球漫游中只从已确认的服务端记忆打开故事场景", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[{
+          id: "planet-mom-real", name: "妈妈星球", type: "parent", role: "妈妈",
+          visibility: "family", theme: "暖橘", position: { x: 56, y: 48 },
+          stats: { memoryStars: 1, resonanceTracks: 0, bookDrafts: 0 }, summary: "真实的家庭记忆。",
+        }]}
+        initialLinks={[]}
+        initialConfirmedMemories={[{
+          id: "memory-travel-real", planetId: "planet-mom-real", title: "旅行归来", occurredAt: "2024",
+          location: "昆明", people: ["妈妈"], emotions: [], visibility: "family", summary: "妈妈讲述了旅行归来后的团圆晚饭。",
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈星球漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "进入星球" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开故事场景：2024 旅行归来" }));
+
+    const storyDialog = screen.getByRole("dialog", { name: "旅行归来故事场景" });
+    expect(storyDialog).toBeInTheDocument();
+    expect(within(storyDialog).getByText("妈妈讲述了旅行归来后的团圆晚饭。")).toBeInTheDocument();
+  });
+
   it("不会从 localStorage 回显旧的记忆星业务内容", () => {
     window.localStorage.setItem("jiashu-galaxy-lit-memories", JSON.stringify([{
       id: "memory-old", planetId: "planet-self", title: "旧本地星", occurredAt: "", location: "", people: [], emotions: [], visibility: "family", summary: "",

@@ -626,6 +626,13 @@ body {
       transform 1.62s cubic-bezier(0.12, 0.86, 0.16, 1);
   }
 
+  .planet.has-cover {
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.7) 0 6%, transparent 16%),
+      radial-gradient(circle at 68% 72%, rgba(0, 0, 0, 0.38), transparent 38%),
+      var(--planet-cover) center / cover no-repeat;
+  }
+
   .planet:hover,
   .planet:focus-visible,
   .planet.selected {
@@ -1673,7 +1680,6 @@ body {
 
   .star-map-primary-action,
   .link-kind,
-  .star-link-row,
   .planet-manage-row button,
   .hidden-planet-row button {
     min-height: 44px;
@@ -1861,12 +1867,10 @@ body {
 
   .star-map-primary-action:hover,
   .link-kind:hover,
-  .star-link-row:hover,
   .planet-manage-row button:hover,
   .hidden-planet-row button:hover,
   .star-map-primary-action:focus-visible,
   .link-kind:focus-visible,
-  .star-link-row:focus-visible,
   .planet-manage-row button:focus-visible,
   .hidden-planet-row button:focus-visible {
     outline: none;
@@ -2074,44 +2078,6 @@ body {
   .book-dock a {
     grid-column: 1 / -1;
     color: var(--gold);
-  }
-
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 0;
-    color: var(--muted);
-    border-bottom: 1px solid rgba(253, 247, 236, 0.08);
-  }
-
-  .switch {
-    position: relative;
-    width: 42px;
-    height: 24px;
-    background: rgba(253, 247, 236, 0.12);
-    border-radius: 999px;
-  }
-
-  .switch::after {
-    content: "";
-    position: absolute;
-    top: 4px;
-    left: 4px;
-    width: 16px;
-    height: 16px;
-    background: rgba(253, 247, 236, 0.78);
-    border-radius: 50%;
-    transition: transform 0.2s ease;
-  }
-
-  .switch.on {
-    background: rgba(242, 206, 137, 0.32);
-  }
-
-  .switch.on::after {
-    background: var(--gold);
-    transform: translateX(18px);
   }
 
   .scope-ring-preview {
@@ -2581,6 +2547,13 @@ body {
     background: radial-gradient(circle at 30% 25%, #fbf1ff, #b8a1c8 45%, #443253 82%);
   }
 
+  .inner-planet-body.has-cover {
+    background:
+      radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.6) 0 8%, transparent 22%),
+      radial-gradient(circle at 68% 72%, rgba(0, 0, 0, 0.36), transparent 48%),
+      var(--planet-cover) center / cover no-repeat;
+  }
+
   .planet-stat-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -3003,6 +2976,518 @@ body {
     border-radius: 28px;
     box-shadow: var(--shadow-md);
     backdrop-filter: blur(22px);
+  }
+
+  .workshop-board {
+    display: block;
+  }
+
+  .workshop-studio {
+    display: grid;
+    grid-template-columns: minmax(340px, 0.92fr) minmax(440px, 1.08fr);
+    height: 100%;
+    min-height: 0;
+    gap: 18px;
+  }
+
+  .workshop-theme-library,
+  .workshop-orbital-stage {
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid rgba(253, 247, 236, 0.14);
+    border-radius: 30px;
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(22px);
+  }
+
+  .workshop-theme-library {
+    display: flex;
+    flex-direction: column;
+    padding: clamp(22px, 2.4vw, 32px);
+    background:
+      linear-gradient(160deg, rgba(61, 45, 46, 0.93), rgba(28, 24, 29, 0.76)),
+      radial-gradient(circle at 18% 10%, rgba(242, 206, 137, 0.12), transparent 30%);
+  }
+
+  .workshop-heading {
+    max-width: 37rem;
+  }
+
+  .workshop-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--gold);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+  }
+
+  .workshop-heading h2 {
+    max-width: 12em;
+    margin: 10px 0 12px;
+    color: #fff4df;
+    font-family: "Noto Serif SC", "Songti SC", serif;
+    font-size: clamp(26px, 2.25vw, 36px);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.2;
+  }
+
+  .workshop-heading p {
+    margin: 0;
+    color: rgba(253, 247, 236, 0.7);
+    font-size: 13px;
+    line-height: 1.75;
+  }
+
+  .workshop-selection {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 9px;
+    margin: 20px 0 16px;
+    padding: 12px 14px;
+    background: rgba(255, 244, 223, 0.045);
+    border: 1px solid rgba(253, 247, 236, 0.1);
+    border-radius: 16px;
+  }
+
+  .workshop-selection span {
+    color: rgba(253, 247, 236, 0.46);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+  }
+
+  .workshop-selection strong {
+    color: #fff2d9;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .workshop-selection small {
+    grid-column: 2;
+    color: rgba(253, 247, 236, 0.58);
+    font-size: 11px;
+  }
+
+  .theme-swatch-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .theme-swatch-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    align-items: center;
+    min-height: 98px;
+    gap: 10px;
+    padding: 13px;
+    overflow: hidden;
+    color: #f9ebd6;
+    text-align: left;
+    cursor: pointer;
+    isolation: isolate;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--theme-c) 92%, #17141b), color-mix(in srgb, var(--theme-b) 30%, #1d1820));
+    border: 1px solid color-mix(in srgb, var(--theme-a) 26%, transparent);
+    border-radius: 18px;
+    transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease, filter 220ms ease;
+  }
+
+  .theme-swatch-card::after {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    content: "";
+    opacity: 0.72;
+    background:
+      radial-gradient(circle at 86% 15%, color-mix(in srgb, var(--theme-a) 62%, transparent), transparent 27%),
+      radial-gradient(circle at 24% 112%, color-mix(in srgb, var(--theme-b) 55%, transparent), transparent 48%);
+  }
+
+  .theme-swatch-card:hover,
+  .theme-swatch-card:focus-visible,
+  .theme-swatch-card.selected {
+    outline: none;
+    border-color: color-mix(in srgb, var(--theme-a) 80%, #fff4df);
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--theme-b) 23%, transparent), inset 0 1px rgba(255, 255, 255, 0.18);
+    filter: saturate(1.12) brightness(1.06);
+    transform: translateY(-2px);
+  }
+
+  .theme-swatch-card:focus-visible,
+  .workshop-upload-trigger:focus-within,
+  .workshop-ambient-controls button:focus-visible {
+    outline: 2px solid #ffe1a4;
+    outline-offset: 3px;
+  }
+
+  .theme-swatch-orb {
+    width: 34px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.88), transparent 14%),
+      radial-gradient(circle at 68% 72%, rgba(0, 0, 0, 0.42), transparent 40%),
+      linear-gradient(140deg, var(--theme-a), var(--theme-b) 48%, var(--theme-c));
+    box-shadow: 0 0 18px color-mix(in srgb, var(--theme-a) 50%, transparent), inset -6px -7px 10px rgba(0, 0, 0, 0.28);
+  }
+
+  .theme-swatch-copy {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .theme-swatch-copy strong {
+    color: #fff6e9;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .theme-swatch-copy small {
+    overflow: hidden;
+    color: rgba(255, 244, 223, 0.68);
+    font-size: 11px;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+  }
+
+  .theme-selected-mark {
+    position: absolute;
+    top: 9px;
+    right: 10px;
+    color: rgba(255, 249, 239, 0.86);
+    font-size: 9px;
+    letter-spacing: 0.08em;
+  }
+
+  .workshop-save-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: auto;
+    padding-top: 18px;
+  }
+
+  .workshop-save-row > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .workshop-save-row span {
+    color: #fff0d5;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .workshop-save-row small {
+    color: rgba(253, 247, 236, 0.52);
+    font-size: 11px;
+  }
+
+  .workshop-save-theme,
+  .workshop-save-cover {
+    min-height: 44px;
+    white-space: nowrap;
+  }
+
+  .workshop-orbital-stage {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: clamp(20px, 2.2vw, 30px);
+    isolation: isolate;
+    background:
+      radial-gradient(circle at 50% 46%, rgba(224, 184, 111, 0.16), transparent 24%),
+      linear-gradient(145deg, rgba(20, 25, 38, 0.95), rgba(29, 23, 35, 0.82));
+  }
+
+  .workshop-orbital-stage::before {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    content: "";
+    opacity: 0.52;
+    background-image:
+      radial-gradient(circle at 10% 16%, rgba(255, 255, 255, 0.8) 0 1px, transparent 1.8px),
+      radial-gradient(circle at 76% 22%, rgba(255, 238, 193, 0.74) 0 1px, transparent 1.6px),
+      radial-gradient(circle at 90% 70%, rgba(255, 255, 255, 0.48) 0 1px, transparent 1.5px),
+      radial-gradient(circle at 26% 84%, rgba(168, 203, 255, 0.58) 0 1px, transparent 1.6px);
+    background-size: 190px 170px, 230px 210px, 170px 150px, 220px 190px;
+  }
+
+  .workshop-preview-caption {
+    position: relative;
+    z-index: 2;
+    max-width: 30rem;
+  }
+
+  .workshop-preview-caption span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #ffe1a4;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.13em;
+  }
+
+  .workshop-preview-caption p {
+    margin: 7px 0 0;
+    color: rgba(242, 239, 246, 0.64);
+    font-size: 12px;
+    line-height: 1.65;
+  }
+
+  .workshop-preview-space {
+    position: relative;
+    display: grid;
+    flex: 1;
+    min-height: 270px;
+    place-items: center;
+    margin: 2px 0 12px;
+    overflow: hidden;
+    perspective: 900px;
+  }
+
+  .workshop-preview-orbit {
+    position: absolute;
+    width: min(83%, 420px);
+    aspect-ratio: 2.2 / 0.72;
+    border: 1px solid rgba(236, 220, 184, 0.25);
+    border-radius: 50%;
+    transform: rotate(-16deg) rotateX(62deg);
+  }
+
+  .workshop-preview-orbit.orbit-two {
+    width: min(65%, 330px);
+    border-color: rgba(126, 179, 199, 0.22);
+    transform: rotate(26deg) rotateX(66deg);
+  }
+
+  .workshop-planet-preview {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    width: clamp(158px, 17vw, 244px);
+    aspect-ratio: 1;
+    overflow: visible;
+    place-items: center;
+    border: 1px solid rgba(255, 250, 238, 0.24);
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 28% 20%, rgba(255, 255, 255, 0.86) 0 5%, transparent 17%),
+      radial-gradient(circle at 71% 74%, rgba(0, 0, 0, 0.45), transparent 46%),
+      var(--planet-cover, linear-gradient(139deg, var(--preview-a), var(--preview-b) 48%, var(--preview-c)));
+    box-shadow:
+      0 0 28px color-mix(in srgb, var(--preview-a) 56%, transparent),
+      0 0 90px color-mix(in srgb, var(--preview-b) 32%, transparent),
+      inset -24px -28px 38px rgba(0, 0, 0, 0.38);
+    transform: rotate(-8deg) rotateX(9deg);
+    transform-style: preserve-3d;
+    animation: workshopPlanetFloat 7s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+  }
+
+  .workshop-planet-preview::before {
+    position: absolute;
+    top: 42%;
+    left: -20%;
+    width: 140%;
+    height: 23%;
+    content: "";
+    border: 1px solid color-mix(in srgb, var(--preview-a) 62%, rgba(255, 255, 255, 0.22));
+    border-right-color: transparent;
+    border-radius: 50%;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--preview-b) 28%, transparent);
+    transform: rotate(-17deg) translateZ(18px);
+  }
+
+  .workshop-planet-light,
+  .workshop-planet-shade {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  .workshop-planet-light {
+    background: linear-gradient(132deg, rgba(255, 255, 255, 0.24), transparent 33% 66%, rgba(0, 0, 0, 0.24));
+    mix-blend-mode: screen;
+  }
+
+  .workshop-planet-shade {
+    background: radial-gradient(circle at 38% 32%, transparent 0 38%, rgba(0, 0, 0, 0.32) 80%);
+  }
+
+  .workshop-planet-name {
+    position: absolute;
+    right: 50%;
+    bottom: -32px;
+    min-width: max-content;
+    padding: 6px 10px;
+    color: rgba(255, 246, 231, 0.86);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    background: rgba(17, 20, 31, 0.64);
+    border: 1px solid rgba(255, 245, 222, 0.15);
+    border-radius: 999px;
+    backdrop-filter: blur(10px);
+    transform: translateX(50%);
+  }
+
+  .workshop-preview-satellite {
+    position: absolute;
+    z-index: 3;
+    width: 7px;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #fff1c8;
+    box-shadow: 0 0 16px #ffd887;
+  }
+
+  .satellite-one {
+    top: 31%;
+    left: 25%;
+  }
+
+  .satellite-two {
+    right: 22%;
+    bottom: 25%;
+    background: #d1e8ff;
+    box-shadow: 0 0 15px #9cc9f4;
+  }
+
+  .workshop-photo-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    margin-top: auto;
+  }
+
+  .workshop-upload-trigger {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 56px;
+    gap: 11px;
+    padding: 10px 13px;
+    color: #fff0d5;
+    cursor: pointer;
+    background: rgba(255, 249, 235, 0.065);
+    border: 1px solid rgba(255, 241, 214, 0.15);
+    border-radius: 16px;
+    transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+  }
+
+  .workshop-upload-trigger:hover {
+    background: rgba(255, 236, 196, 0.11);
+    border-color: rgba(255, 218, 146, 0.38);
+    transform: translateY(-1px);
+  }
+
+  .workshop-upload-trigger > svg {
+    flex: 0 0 auto;
+    color: #ffd78a;
+  }
+
+  .workshop-upload-trigger > span {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .workshop-upload-trigger strong {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workshop-upload-trigger small {
+    overflow: hidden;
+    color: rgba(253, 247, 236, 0.52);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workshop-upload-trigger input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .workshop-ambient-controls {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 246, 226, 0.11);
+  }
+
+  .workshop-ambient-controls summary {
+    color: rgba(255, 241, 218, 0.72);
+    font-size: 11px;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+  }
+
+  .workshop-ambient-controls summary span {
+    color: rgba(255, 241, 218, 0.38);
+    letter-spacing: 0.04em;
+  }
+
+  .workshop-ambient-group {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .workshop-ambient-group > span {
+    padding-top: 8px;
+    color: rgba(255, 241, 218, 0.5);
+    font-size: 11px;
+  }
+
+  .workshop-ambient-group > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .workshop-ambient-controls button {
+    min-height: 32px;
+    padding: 6px 9px;
+    color: rgba(255, 242, 222, 0.6);
+    font-size: 10px;
+    cursor: pointer;
+    background: rgba(255, 246, 226, 0.045);
+    border: 1px solid rgba(255, 246, 226, 0.1);
+    border-radius: 999px;
+    transition: color 180ms ease, border-color 180ms ease, background 180ms ease;
+  }
+
+  .workshop-ambient-controls button:hover,
+  .workshop-ambient-controls button.selected {
+    color: #fff4df;
+    background: rgba(255, 215, 138, 0.12);
+    border-color: rgba(255, 215, 138, 0.32);
+  }
+
+  .workshop-zone-preview {
+    margin-top: 12px;
+  }
+
+  @keyframes workshopPlanetFloat {
+    0%, 100% { transform: translate3d(0, 0, 0) rotate(-8deg) rotateX(9deg); }
+    50% { transform: translate3d(0, -9px, 0) rotate(-3deg) rotateX(11deg); }
   }
 
   .book-sections {
@@ -3467,6 +3952,28 @@ body {
       grid-column: 1 / -1;
       max-height: 36vh;
     }
+
+    .workshop-board {
+      right: 34px;
+      bottom: 104px;
+      left: 34px;
+      overflow-y: auto;
+    }
+
+    .workshop-studio {
+      grid-template-columns: 1fr;
+      height: auto;
+      min-height: 100%;
+    }
+
+    .workshop-theme-library,
+    .workshop-orbital-stage {
+      overflow: visible;
+    }
+
+    .workshop-orbital-stage {
+      min-height: 610px;
+    }
   }
 
   @media (max-width: 760px) {
@@ -3704,6 +4211,62 @@ body {
     .surface-caption h2 {
       font-size: 24px;
     }
+
+    .workshop-board {
+      inset: 78px 12px 104px;
+      padding-bottom: 18px;
+    }
+
+    .workshop-theme-library,
+    .workshop-orbital-stage {
+      padding: 22px 18px;
+      border-radius: 22px;
+    }
+
+    .workshop-heading h2 {
+      max-width: 15em;
+      font-size: clamp(24px, 7vw, 32px);
+    }
+
+    .theme-swatch-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .theme-swatch-card {
+      min-height: 72px;
+    }
+
+    .workshop-save-row,
+    .workshop-photo-controls {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    .workshop-save-row {
+      align-items: stretch;
+    }
+
+    .workshop-save-theme,
+    .workshop-save-cover {
+      width: 100%;
+    }
+
+    .workshop-preview-space {
+      min-height: 310px;
+    }
+
+    .workshop-planet-preview {
+      width: min(210px, 62vw);
+    }
+
+    .workshop-ambient-group {
+      grid-template-columns: 1fr;
+      gap: 5px;
+    }
+
+    .workshop-ambient-group > span {
+      padding-top: 0;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -3732,7 +4295,10 @@ body {
     .app.auto-cruise-active .links,
     .app.auto-cruise-active .planet,
     .app.auto-cruise-active .memory,
-    .app.auto-cruise-active .spark {
+    .app.auto-cruise-active .spark,
+    .workshop-planet-preview,
+    .workshop-preview-orbit,
+    .workshop-preview-satellite {
       animation: none;
     }
   }

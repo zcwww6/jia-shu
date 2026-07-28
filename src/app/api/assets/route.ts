@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { auth } from "@/auth";
-import { createAsset, updateAssetStatus } from "@/server/db/asset-repo";
+import {
+  claimFailedAssetForRetry,
+  createAsset,
+  findActiveAsset,
+  updateAssetStatus,
+} from "@/server/db/asset-repo";
 import { resolvePersonalGalaxyScope } from "@/server/db/galaxy-repo";
 import { findActivePlanet } from "@/server/db/planet-repo";
 import { DomainError } from "@/server/domain-error";
@@ -11,6 +16,7 @@ import {
   createStorageKey,
   writePrivateAsset,
 } from "@/server/media/media-store";
+import { idempotencyKeySchema } from "@/server/validation/domain-schemas";
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -34,6 +40,33 @@ type ValidatedAsset = {
   metadata?: ValidatedMetadata;
   derivatives?: Partial<ValidatedImageDerivatives>;
 };
+type AssetDtoSource = {
+  id: string;
+  planetId: string;
+  kind: string;
+  visibility: string;
+  mimeType: string;
+  sizeBytes: number;
+  originalName: string;
+  width: number | null;
+  height: number | null;
+  durationMs: number | null;
+  createdAt: Date;
+};
+type ActiveAsset = NonNullable<Awaited<ReturnType<typeof findActiveAsset>>>;
+type AssetReplayRequest = {
+  planetId: string;
+  kind: AssetKind;
+  visibility: "private" | "family" | "selected";
+  sha256: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+type KeyedAssetResolution =
+  | { action: "create" }
+  | { action: "replay"; asset: ActiveAsset & { status: "stored" | "ready" } }
+  | { action: "retry"; asset: ActiveAsset & { status: "failed" } };
 
 const multipartAssetSchema = z.object({
   planetId: z.string().cuid(),
@@ -59,7 +92,7 @@ function validatedMetadata(value: ValidatedAsset): ValidatedMetadata {
   return value.metadata ?? {};
 }
 
-function toAssetDto(asset: Awaited<ReturnType<typeof createAsset>>, status: "stored" | "failed") {
+function toAssetDto(asset: AssetDtoSource, status: "stored" | "ready" | "failed") {
   return {
     id: asset.id,
     planetId: asset.planetId,
@@ -76,6 +109,112 @@ function toAssetDto(asset: Awaited<ReturnType<typeof createAsset>>, status: "sto
   };
 }
 
+function readIdempotencyKey(request: Request) {
+  const value = request.headers?.get("Idempotency-Key") ?? null;
+
+  if (value === null) return undefined;
+
+  const parsed = idempotencyKeySchema.safeParse(value);
+  if (!parsed.success) {
+    throw new DomainError("IDEMPOTENCY_KEY_INVALID", 400, "幂等键格式不正确。");
+  }
+
+  return parsed.data;
+}
+
+function isUniqueViolation(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+}
+
+function hasMatchingReplayFingerprint(
+  asset: Awaited<ReturnType<typeof findActiveAsset>>,
+  request: AssetReplayRequest,
+): asset is ActiveAsset {
+  return asset !== null
+    && asset.planetId === request.planetId
+    && asset.kind === request.kind
+    && asset.visibility === request.visibility
+    && asset.sha256 === request.sha256
+    && asset.originalName === request.originalName
+    && asset.mimeType === request.mimeType
+    && asset.sizeBytes === request.sizeBytes;
+}
+
+function isMatchingReplayAsset(
+  asset: Awaited<ReturnType<typeof findActiveAsset>>,
+  request: AssetReplayRequest,
+): asset is ActiveAsset & { status: "stored" | "ready" } {
+  return hasMatchingReplayFingerprint(asset, request)
+    && (asset.status === "stored" || asset.status === "ready");
+}
+
+function assetIdForIdempotencyKey(scope: { userId: string; galaxyId: string }, idempotencyKey: string) {
+  return createHash("sha256")
+    .update(`${scope.userId}\0${scope.galaxyId}\0${idempotencyKey}`)
+    .digest("hex");
+}
+
+async function resolveKeyedAsset(input: {
+  userId: string;
+  galaxyId: string;
+  assetId: string;
+  replayRequest: AssetReplayRequest;
+}): Promise<KeyedAssetResolution> {
+  const existing = await findActiveAsset({
+    userId: input.userId,
+    galaxyId: input.galaxyId,
+    assetId: input.assetId,
+  });
+
+  if (!existing) {
+    return { action: "create" };
+  }
+
+  if (!hasMatchingReplayFingerprint(existing, input.replayRequest)) {
+    throw new DomainError("ASSET_UPLOAD_RETRY_CONFLICT", 409, "上传请求冲突，请使用新的请求重试。");
+  }
+
+  if (isMatchingReplayAsset(existing, input.replayRequest)) {
+    return { action: "replay", asset: existing };
+  }
+
+  if (existing.status === "processing") {
+    throw new DomainError("ASSET_UPLOAD_RETRY_PENDING", 409, "上传请求尚未完成，请稍后使用原请求重试。");
+  }
+
+  if (existing.status !== "failed") {
+    throw new DomainError("ASSET_UPLOAD_RETRY_CONFLICT", 409, "上传请求冲突，请使用新的请求重试。");
+  }
+
+  const failedAsset = { ...existing, status: "failed" as const };
+
+  const claimed = await claimFailedAssetForRetry({
+    userId: input.userId,
+    galaxyId: input.galaxyId,
+    assetId: input.assetId,
+  });
+
+  if (claimed) {
+    return { action: "retry", asset: failedAsset };
+  }
+
+  const afterClaim = await findActiveAsset({
+    userId: input.userId,
+    galaxyId: input.galaxyId,
+    assetId: input.assetId,
+  });
+
+  if (isMatchingReplayAsset(afterClaim, input.replayRequest)) {
+    return { action: "replay", asset: afterClaim };
+  }
+
+  if (hasMatchingReplayFingerprint(afterClaim, input.replayRequest)) {
+    throw new DomainError("ASSET_UPLOAD_RETRY_PENDING", 409, "上传请求尚未完成，请稍后使用原请求重试。");
+  }
+
+  throw new DomainError("ASSET_UPLOAD_RETRY_CONFLICT", 409, "上传请求冲突，请使用新的请求重试。");
+}
+
 async function uploadAsset(request: Request) {
   const session = await auth();
   const userId = session?.user?.id;
@@ -84,6 +223,7 @@ async function uploadAsset(request: Request) {
     return NextResponse.json({ code: "UNAUTHENTICATED", message: "请先登录后再上传资源。" }, { status: 401 });
   }
 
+  const idempotencyKey = readIdempotencyKey(request);
   const scope = await resolvePersonalGalaxyScope(userId);
   let form: FormData;
 
@@ -138,15 +278,18 @@ async function uploadAsset(request: Request) {
     throw new DomainError("ASSET_UPLOAD_INVALID", 400, "上传内容格式不正确。");
   }
 
-  const assetId = randomUUID();
+  const assetId = idempotencyKey
+    ? assetIdForIdempotencyKey(scope, idempotencyKey)
+    : randomUUID();
   const derivatives = imageDerivatives(validated);
   const metadata = validatedMetadata(validated);
-  const storageKey = createStorageKey({
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  let storageKey = createStorageKey({
     userId: scope.userId,
     assetId,
     extension: validated.extension,
   });
-  const normalizedStorageKey = derivatives
+  let normalizedStorageKey = derivatives
     ? createDerivativeStorageKey({
       userId: scope.userId,
       assetId,
@@ -154,7 +297,7 @@ async function uploadAsset(request: Request) {
       variant: "normalized",
     })
     : undefined;
-  const thumbnailStorageKey = derivatives
+  let thumbnailStorageKey = derivatives
     ? createDerivativeStorageKey({
       userId: scope.userId,
       assetId,
@@ -162,26 +305,87 @@ async function uploadAsset(request: Request) {
       variant: "thumbnail",
     })
     : undefined;
-  const asset = await createAsset({
-    id: assetId,
-    userId: scope.userId,
-    galaxyId: scope.galaxyId,
+  const replayRequest = {
     planetId,
     kind: validated.kind,
     visibility,
-    storageKey,
+    sha256,
+    originalName,
     mimeType: validated.trustedMime,
     sizeBytes: validated.sizeBytes,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-    originalName,
-    width: metadata.width,
-    height: metadata.height,
-    durationMs: metadata.durationMs,
-    extractedText: metadata.extractedText,
-    normalizedStorageKey,
-    thumbnailStorageKey,
-    status: "processing",
-  });
+  } satisfies AssetReplayRequest;
+  const createNewAsset = () => createAsset({
+      id: assetId,
+      userId: scope.userId,
+      galaxyId: scope.galaxyId,
+      planetId,
+      kind: validated.kind,
+      visibility,
+      storageKey,
+      mimeType: validated.trustedMime,
+      sizeBytes: validated.sizeBytes,
+      sha256,
+      originalName,
+      width: metadata.width,
+      height: metadata.height,
+      durationMs: metadata.durationMs,
+      extractedText: metadata.extractedText,
+      normalizedStorageKey,
+      thumbnailStorageKey,
+      status: "processing",
+    });
+  let asset: Awaited<ReturnType<typeof createAsset>> | undefined;
+
+  if (!idempotencyKey) {
+    asset = await createNewAsset();
+  } else {
+    let resolution = await resolveKeyedAsset({
+      userId: scope.userId,
+      galaxyId: scope.galaxyId,
+      assetId,
+      replayRequest,
+    });
+
+    if (resolution.action === "replay") {
+      return NextResponse.json(toAssetDto(resolution.asset, resolution.asset.status), { status: 201 });
+    }
+
+    if (resolution.action === "create") {
+      try {
+        asset = await createNewAsset();
+      } catch (error) {
+        if (!isUniqueViolation(error)) {
+          throw error;
+        }
+
+        resolution = await resolveKeyedAsset({
+          userId: scope.userId,
+          galaxyId: scope.galaxyId,
+          assetId,
+          replayRequest,
+        });
+
+        if (resolution.action === "create") {
+          throw new DomainError("ASSET_UPLOAD_RETRY_CONFLICT", 409, "上传请求冲突，请使用新的请求重试。");
+        }
+
+        if (resolution.action === "replay") {
+          return NextResponse.json(toAssetDto(resolution.asset, resolution.asset.status), { status: 201 });
+        }
+      }
+    }
+
+    if (resolution.action === "retry") {
+      asset = resolution.asset;
+      storageKey = resolution.asset.storageKey;
+      normalizedStorageKey = resolution.asset.normalizedStorageKey ?? undefined;
+      thumbnailStorageKey = resolution.asset.thumbnailStorageKey ?? undefined;
+    }
+  }
+
+  if (!asset) {
+    throw new DomainError("ASSET_UPLOAD_RETRY_CONFLICT", 409, "上传请求冲突，请使用新的请求重试。");
+  }
 
   try {
     await writePrivateAsset(storageKey, bytes);

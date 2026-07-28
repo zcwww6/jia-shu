@@ -33,9 +33,8 @@ describe("memory AI capability preflight", () => {
       .toThrow(expect.objectContaining({ code: "AI_NOT_CONFIGURED", status: 503 }));
   });
 
-  it("fails closed before enqueueing an audio pipeline without a transcription model", () => {
-    expect(() => assertMemoryAiCapabilitiesConfigured({ sourceKind: "audio" }))
-      .toThrow(expect.objectContaining({ code: "AI_NOT_CONFIGURED", status: 503 }));
+  it("allows an audio pipeline to use the configured text model when no transcription endpoint model exists", () => {
+    expect(() => assertMemoryAiCapabilitiesConfigured({ sourceKind: "audio" })).not.toThrow();
   });
 
   it("requires the common key and endpoint even when the source-specific model exists", () => {

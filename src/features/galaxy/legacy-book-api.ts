@@ -1,11 +1,9 @@
 export type LegacyBookSourceRange = "single_planet" | "binary_system" | "family_galaxy" | "memorial";
 export type LegacyBookVisibility = "private" | "family" | "selected";
 
-export type LegacyBookSection = {
-  title: string;
-  body: string;
-  sourceMemoryIds?: string[];
-};
+import type { FamilyBookMedia, FamilyBookSection } from "@/shared/types/family-book";
+
+export type LegacyBookSection = FamilyBookSection;
 
 export type LegacyBookDraft = {
   id?: string;
@@ -30,9 +28,11 @@ export type LegacyCreatedBook = {
 export type LegacyBookDetail = {
   id: string;
   title: string;
+  intro: string;
   body: string;
   sections: LegacyBookSection[];
   sourceLabels: Record<string, string>;
+  media: FamilyBookMedia[];
   status: "draft" | "ready" | "published" | "archived";
   version: number;
   visibility: LegacyBookVisibility;
@@ -106,7 +106,48 @@ function readSourceLabels(value: unknown): Record<string, string> {
 }
 
 function parseLegacyBookDetail(book: LegacyBookDetail): LegacyBookDetail {
-  return { ...book, sourceLabels: readSourceLabels(book.sourceLabels) };
+  return {
+    ...book,
+    intro: typeof book.intro === "string" ? book.intro.trim() : "",
+    sourceLabels: readSourceLabels(book.sourceLabels),
+    media: readBookMedia(book.media),
+  };
+}
+
+function readBookMedia(value: unknown): FamilyBookMedia[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id.trim() : "";
+    const kind = record.kind;
+    const title = typeof record.title === "string" ? record.title.trim() : "";
+    const mimeType = typeof record.mimeType === "string" ? record.mimeType.trim() : "";
+    const originalName = typeof record.originalName === "string" ? record.originalName.trim() : "";
+    const url = typeof record.url === "string" ? record.url.trim() : "";
+
+    if ((kind !== "image" && kind !== "audio") || !id || !title || !mimeType || !originalName || url !== `/api/assets/${id}/content`) {
+      return [];
+    }
+
+    return [{
+      id,
+      kind,
+      title,
+      caption: typeof record.caption === "string" ? record.caption.trim() : "",
+      mimeType,
+      originalName,
+      url,
+      width: validNullableNumber(record.width),
+      height: validNullableNumber(record.height),
+      durationMs: validNullableNumber(record.durationMs),
+    }];
+  });
+}
+
+function validNullableNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 export function createLegacyBook(input: LegacyBookCreateInput, idempotencyKey: string) {

@@ -34,6 +34,7 @@ export type LegacyPlanetUpdate = {
   theme?: string | null;
   summary?: string | null;
   position?: { x: number; y: number };
+  coverAssetId?: string | null;
 };
 
 export type LegacyRelationshipInput = {

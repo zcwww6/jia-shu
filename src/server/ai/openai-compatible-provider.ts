@@ -77,16 +77,42 @@ export class OpenAiCompatibleProvider implements AiProvider {
   }
 
   async transcribeAudio(input: AudioAiInput): Promise<Transcript> {
-    const model = this.requireCapability(this.config.transcriptionModel);
-    const form = new FormData();
-    form.append("model", model);
-    form.append("file", input.audio, input.fileName);
+    if (this.config.transcriptionModel) {
+      const form = new FormData();
+      form.append("model", this.requireCapability(this.config.transcriptionModel));
+      form.append("file", input.audio, input.fileName);
 
-    const payload = await this.requestJson(this.endpoint("/audio/transcriptions"), {
-      method: "POST",
-      headers: { Authorization: `Bearer ${this.config.apiKey}` },
-      body: form,
-    });
+      const payload = await this.requestJson(this.endpoint("/audio/transcriptions"), {
+        method: "POST",
+        headers: { Authorization: `Bearer ${this.config.apiKey}` },
+        body: form,
+      });
+
+      if (!isTranscript(payload)) {
+        throw providerResponseInvalid();
+      }
+
+      return { text: payload.text };
+    }
+
+    const model = this.requireCapability(this.config.textModel);
+    const bytes = new Uint8Array(await blobArrayBuffer(input.audio));
+    const payload = await this.chatJson(
+      "audio_transcription",
+      model,
+      transcriptSchema,
+      "你是谨慎的家庭语音转写助手。只转写音频中可辨认的内容；听不清时保持为空，不得补写或编造家庭事实。",
+      [
+        { type: "text", text: "请忠实转写这段家庭语音。" },
+        {
+          type: "input_audio",
+          input_audio: {
+            data: Buffer.from(bytes).toString("base64"),
+            format: audioChatFormat(input.audio.type),
+          },
+        },
+      ],
+    );
 
     if (!isTranscript(payload)) {
       throw providerResponseInvalid();
@@ -291,6 +317,15 @@ const imageDescriptionSchema = {
   additionalProperties: false,
 } as const;
 
+const transcriptSchema = {
+  type: "object",
+  properties: {
+    text: { type: "string" },
+  },
+  required: ["text"],
+  additionalProperties: false,
+} as const;
+
 const resonanceExplanationSchema = {
   type: "object",
   properties: {
@@ -325,6 +360,20 @@ const generatedBookSchema = {
 
 function isTranscript(value: unknown): value is { text: string } {
   return typeof value === "object" && value !== null && typeof (value as { text?: unknown }).text === "string";
+}
+
+function audioChatFormat(mimeType: string) {
+  if (mimeType === "audio/wav") return "wav";
+  if (mimeType === "audio/x-m4a") return "m4a";
+  return "mp3";
+}
+
+async function blobArrayBuffer(blob: Blob) {
+  if (typeof blob.arrayBuffer !== "function") {
+    throw providerResponseInvalid();
+  }
+
+  return blob.arrayBuffer();
 }
 
 function isMemoryAiDraft(value: unknown): value is MemoryAiDraft {

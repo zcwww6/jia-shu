@@ -20,7 +20,7 @@ export type LegacyMemoryResponse = {
 
 export type LegacyMemoryAiJob = {
   id: string;
-  status: "queued" | "processing" | "completed" | "failed" | string;
+  status: "queued" | "processing" | "succeeded" | "completed" | "failed" | string;
   errorCode?: string | null;
   error?: string | null;
 };
@@ -28,6 +28,7 @@ export type LegacyMemoryAiJob = {
 export type CreateLegacyMemoryDraftInput = {
   planetId: string;
   sourceText: string;
+  assetIds?: string[];
   visibility: LegacyMemoryVisibility;
   allowResonance?: boolean;
   allowBook?: boolean;
