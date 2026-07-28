@@ -17,6 +17,7 @@ const savedBookDetail = {
   title: savedBook.title,
   body: "这是从服务器读取的真实正文。",
   sections: [{ title: "团圆", body: "真实章节。", sourceMemoryIds: ["memory-a", "memory-b"] }],
+  sourceLabels: { "memory-a": "妈妈的真实除夕", "memory-b": "我的真实除夕" },
   status: "ready" as const,
   version: 4,
   visibility: "family" as const,
@@ -122,7 +123,47 @@ describe("GalaxyWorkspace persisted book flow", () => {
 
     await waitFor(() => expect(screen.getByText(savedBookDetail.body)).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(`/api/books/${savedBook.id}`, { method: "GET" });
+    expect(screen.getByText("妈妈的真实除夕")).toBeInTheDocument();
     expect(screen.queryByText("不应恢复的本地 Mock 家书")).not.toBeInTheDocument();
+  });
+
+  it("posts every session-confirmed resonance source even when the initial eligibility snapshot is incomplete", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === `/api/resonances/${confirmedResonance.id}/confirm`) {
+        return new Response(JSON.stringify({ ...confirmedResonance, status: "confirmed" }), { status: 200 });
+      }
+      if (url === "/api/books" && init?.method === "POST") {
+        return new Response(JSON.stringify({ message: "来源授权已失效" }), { status: 422 });
+      }
+      return new Response(JSON.stringify({ message: `unexpected ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={confirmedMemories}
+        initialPendingResonances={[confirmedResonance]}
+        initialGrowingBooks={[]}
+        initialEligibleBookSources={[{ id: "memory-a", title: "妈妈的真实除夕" }]}
+      />,
+    );
+
+    await enterConfirmedBookWorkshop();
+    expect(screen.getByRole("button", { name: "生成这本家书" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
+
+    await waitFor(() => expect(screen.getByText("来源授权已失效")).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith("/api/books", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        sourceMemoryIds: ["memory-a", "memory-b"],
+        sourceRange: "binary_system",
+        themeTemplateKey: "family_reunion",
+        visibility: "family",
+      }),
+    }));
+    expect(screen.queryByText(generatedBook.body)).not.toBeInTheDocument();
   });
 
   it("generates from only the server-approved sources of a confirmed resonance and renders the real response", async () => {

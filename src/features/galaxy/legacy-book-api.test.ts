@@ -66,7 +66,7 @@ describe("legacy book API bridge", () => {
       }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getLegacyBook("book-1")).resolves.toEqual(createdBook);
+    await expect(getLegacyBook("book-1")).resolves.toEqual({ ...createdBook, sourceLabels: {} });
     await expect(updateLegacyBook("book-1", {
       version: 1,
       title: "新标题",
@@ -78,6 +78,35 @@ describe("legacy book API bridge", () => {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ version: 1, title: "新标题", body: "新正文" }),
+    });
+  });
+
+  it("keeps only string source labels from a saved book detail response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: "book-1",
+      title: "除夕家书",
+      body: "真实正文",
+      sections: [],
+      status: "ready",
+      version: 2,
+      visibility: "family",
+      sourceLabels: {
+        "memory-a": "妈妈的真实除夕",
+        "memory-b": 42,
+        sourceText: { raw: "不得暴露" },
+      },
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getLegacyBook("book-1")).resolves.toEqual({
+      id: "book-1",
+      title: "除夕家书",
+      body: "真实正文",
+      sections: [],
+      status: "ready",
+      version: 2,
+      visibility: "family",
+      sourceLabels: { "memory-a": "妈妈的真实除夕" },
     });
   });
 

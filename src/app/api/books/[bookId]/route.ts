@@ -13,7 +13,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ boo
   const { bookId } = await params;
   const book = await findActiveBook({ ...scope, bookId });
   if (!book) return NextResponse.json({ code: "BOOK_NOT_FOUND", message: "家书不存在或无权访问。" }, { status: 404 });
-  return NextResponse.json({ id: book.id, title: book.title, body: book.body, sections: book.sections, status: book.status, version: book.version, visibility: book.visibility });
+  return NextResponse.json({ id: book.id, title: book.title, body: book.body, sections: book.sections, sourceLabels: sourceLabelsFromDraft(book.draft), status: book.status, version: book.version, visibility: book.visibility });
+}
+
+function sourceLabelsFromDraft(draft: unknown): Record<string, string> {
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return {};
+  const parsedDraft = draft as Record<string, unknown>;
+  const sourceMemoryIds = parsedDraft.sourceMemoryIds;
+  const sourceLabels = parsedDraft.sourceLabels;
+  if (!Array.isArray(sourceMemoryIds) || !sourceMemoryIds.every((memoryId) => typeof memoryId === "string")) return {};
+  if (!sourceLabels || typeof sourceLabels !== "object" || Array.isArray(sourceLabels)) return {};
+
+  return Object.fromEntries(sourceMemoryIds.flatMap((memoryId) => {
+    const title = (sourceLabels as Record<string, unknown>)[memoryId];
+    return memoryId.trim().length > 0 && typeof title === "string" ? [[memoryId, title]] : [];
+  }));
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ bookId: string }> }) {

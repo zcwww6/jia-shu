@@ -196,7 +196,7 @@ type GrowingBookSummary = {
 
 type EligibleBookSource = { id: string; title: string | null };
 
-type ActiveLegacyBook = LegacyBookDetail & { sourceLabels: string[] };
+type ActiveLegacyBook = Omit<LegacyBookDetail, "sourceLabels"> & { sourceLabels: string[] };
 
 const themeTemplateKeyByLabel: Record<string, string> = {
   "家庭团圆": "family_reunion",
@@ -432,7 +432,6 @@ export function GalaxyWorkspace({
   initialConfirmedMemories = [],
   initialPendingResonances = [],
   initialGrowingBooks = [],
-  initialEligibleBookSources = [],
 }: {
   initialPlanets?: Planet[];
   initialLinks?: PlanetLink[];
@@ -506,7 +505,6 @@ export function GalaxyWorkspace({
   const [memoryFlowLoading, setMemoryFlowLoading] = useState(false);
   const [memoryFlowError, setMemoryFlowError] = useState<string | null>(null);
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
-  const [eligibleBookSources, setEligibleBookSources] = useState<EligibleBookSource[]>(initialEligibleBookSources);
   const [growingBooks, setGrowingBooks] = useState<GrowingBookSummary[]>(initialGrowingBooks);
   const [activeBook, setActiveBook] = useState<ActiveLegacyBook | null>(null);
   const [bookTitleDraft, setBookTitleDraft] = useState("");
@@ -595,12 +593,12 @@ export function GalaxyWorkspace({
   const confirmedBookSources = useMemo(() => {
     if (!confirmedResonanceSourceMemoryIds) return [];
 
-    const titleById = new Map(eligibleBookSources.map((source) => [source.id, source.title]));
-    return confirmedResonanceSourceMemoryIds.flatMap((id) => {
-      if (!titleById.has(id)) return [];
-      return [{ id, title: titleById.get(id)?.trim() || "未命名记忆" }];
-    });
-  }, [confirmedResonanceSourceMemoryIds, eligibleBookSources]);
+    const titleById = new Map(litMemories.map((memory) => [memory.id, memory.title]));
+    return confirmedResonanceSourceMemoryIds.map((id) => ({
+      id,
+      title: titleById.get(id)?.trim() || "已确认记忆",
+    }));
+  }, [confirmedResonanceSourceMemoryIds, litMemories]);
   const canOpenSavedBooks = growingBooks.length > 0;
 
   function abortMemoryFlowOperation() {
@@ -728,7 +726,7 @@ export function GalaxyWorkspace({
       const book = await getLegacyBook(bookId);
       const sourceLabels = knownSourceLabels.length > 0
         ? knownSourceLabels
-        : activeBook?.id === bookId ? activeBook.sourceLabels : [];
+        : Object.values(book.sourceLabels);
       applyActiveBook(book, sourceLabels);
       await loadActiveBookShares(bookId);
     } catch (error) {
@@ -1214,12 +1212,6 @@ export function GalaxyWorkspace({
         status: "confirmed",
       });
       setLitMemories((current) => [...current.filter((item) => item.id !== memory.id), memory]);
-      if (confirmed.allowBook) {
-        setEligibleBookSources((current) => [
-          ...current.filter((source) => source.id !== memory.id),
-          { id: memory.id, title: memory.title },
-        ]);
-      }
       setGalaxyPlanets((current) => current.map((planet) => (
         planet.id === memory.planetId
           ? { ...planet, stats: { ...planet.stats, memoryStars: planet.stats.memoryStars + 1 } }

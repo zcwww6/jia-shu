@@ -32,6 +32,7 @@ export type LegacyBookDetail = {
   title: string;
   body: string;
   sections: LegacyBookSection[];
+  sourceLabels: Record<string, string>;
   status: "draft" | "ready" | "published" | "archived";
   version: number;
   visibility: LegacyBookVisibility;
@@ -94,6 +95,20 @@ async function requestJson<T>(url: string, init: RequestInit): Promise<T> {
   return body as T;
 }
 
+function readSourceLabels(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value).filter(([memoryId, title]) => (
+      memoryId.trim().length > 0 && typeof title === "string"
+    )),
+  );
+}
+
+function parseLegacyBookDetail(book: LegacyBookDetail): LegacyBookDetail {
+  return { ...book, sourceLabels: readSourceLabels(book.sourceLabels) };
+}
+
 export function createLegacyBook(input: LegacyBookCreateInput, idempotencyKey: string) {
   return requestJson<LegacyCreatedBook>("/api/books", {
     method: "POST",
@@ -106,7 +121,8 @@ export function createLegacyBook(input: LegacyBookCreateInput, idempotencyKey: s
 }
 
 export function getLegacyBook(bookId: string) {
-  return requestJson<LegacyBookDetail>(`/api/books/${bookId}`, { method: "GET" });
+  return requestJson<LegacyBookDetail>(`/api/books/${bookId}`, { method: "GET" })
+    .then(parseLegacyBookDetail);
 }
 
 export function updateLegacyBook(bookId: string, input: LegacyBookUpdateInput) {
