@@ -609,19 +609,19 @@ describe("GalaxyWorkspace persisted book flow", () => {
 
     await enterConfirmedBookWorkshop();
     fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
-    await waitFor(() => expect(screen.getByText("生成请求已过期，请刷新后重试。")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("请求已过期，已准备好新的请求，请直接重试。")).toBeInTheDocument());
     expect(screen.queryByText(generatedBook.body)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
     await waitFor(() => expect(screen.getByText(generatedBook.body)).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "创建分享链接" }));
-    await waitFor(() => expect(screen.getByText("创建分享请求已过期，请刷新后重试。")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("请求已过期，已准备好新的请求，请直接重试。")).toBeInTheDocument());
     expect(screen.queryByText("/share/new-share")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "创建分享链接" }));
     await waitFor(() => expect(screen.getByText("/share/new-share")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "撤回分享：existing-share" }));
-    await waitFor(() => expect(screen.getByText("撤回分享请求已过期，请刷新后重试。")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("请求已过期，已准备好新的请求，请直接重试。")).toBeInTheDocument());
     expect(screen.getByText("/share/existing-share")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "撤回分享：existing-share" }));
     await waitFor(() => expect(screen.queryByText("/share/existing-share")).not.toBeInTheDocument());

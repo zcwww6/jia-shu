@@ -208,6 +208,8 @@ function isExpiredIdempotencyError(error: unknown): error is LegacyBookApiError 
     && error.code === "IDEMPOTENCY_EXPIRED";
 }
 
+const expiredIdempotencyRetryMessage = "请求已过期，已准备好新的请求，请直接重试。";
+
 function clearMatchingExpiredRequestKey(
   currentKey: string | undefined,
   requestKey: string,
@@ -842,7 +844,7 @@ export function GalaxyWorkspace({
       }
       if (!isCurrentBookOperation(operation)) return;
       if (idempotencyExpired) {
-        setBookError(`${errorMessage(error)}，请刷新后重试。`);
+        setBookError(expiredIdempotencyRetryMessage);
         return;
       }
       setBookError(errorMessage(error));
@@ -912,7 +914,7 @@ export function GalaxyWorkspace({
       }
       if (!isCurrentBookOperation(operation)) return;
       if (idempotencyExpired) {
-        setShareError(`${errorMessage(error)}，请刷新后重试。`);
+        setShareError(expiredIdempotencyRetryMessage);
         return;
       }
       setShareError(errorMessage(error));
@@ -944,7 +946,7 @@ export function GalaxyWorkspace({
       }
       if (!isCurrentBookOperation(operation)) return;
       if (idempotencyExpired) {
-        setShareError(`${errorMessage(error)}，请刷新后重试。`);
+        setShareError(expiredIdempotencyRetryMessage);
         return;
       }
       setShareError(errorMessage(error));
