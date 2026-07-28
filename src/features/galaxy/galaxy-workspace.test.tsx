@@ -213,9 +213,9 @@ describe("GalaxyWorkspace", () => {
     fireEvent.wheel(screen.getByRole("dialog", { name: "星图编辑" }), { deltaY: -100 });
     expect(canvas).toHaveAttribute("style", zoomBefore ?? "");
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭星图编辑" }));
     fireEvent.click(screen.getByRole("button", { name: "隐私星域" }));
 
+    expect(screen.queryByRole("dialog", { name: "星图编辑" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "星图菜单" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "放大视角" })).not.toBeInTheDocument();
     expect(screen.queryByText("每颗星球都有自己的光照范围")).not.toBeInTheDocument();

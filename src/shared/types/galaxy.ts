@@ -284,11 +284,19 @@ export interface PublishBookResponse {
   url: string;
 }
 
+export type StoredSharedBookDraft = BookDraft & {
+  sourceLabels?: Record<string, string>;
+};
+
+export type StoredSharedBookSection = GeneratedBookSection & {
+  sourceLabels?: string[];
+};
+
 export interface StoredSharedBook {
   token: string;
-  draft: BookDraft;
+  draft: StoredSharedBookDraft;
   body: string;
-  sections: GeneratedBookSection[];
+  sections: StoredSharedBookSection[];
   share: ShareConfirmationPayload;
   createdAt: string;
 }

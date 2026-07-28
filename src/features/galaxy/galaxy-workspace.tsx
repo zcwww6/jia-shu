@@ -1263,6 +1263,7 @@ export function GalaxyWorkspace({
     if (zone !== "galaxy") {
       setAutoCruise(false);
       setImmersiveMode(false);
+      setStarMapEditorOpen(false);
     }
     setActiveZone(zone);
     setActivePanel(options.panel ?? null);
@@ -2282,23 +2283,25 @@ export function GalaxyWorkspace({
               <div className="gesture-hint">拖拽漫游 / 滚轮缩放 / 双击靠近星球</div>
             </>
           ) : null}
-          <AnimatePresence>
-            {starMapEditorOpen ? (
-              <StarMapEditor
-                hiddenPlanets={hiddenPlanets}
-                links={galaxyLinks}
-                onAddCustomLink={addCustomLinkFromSelected}
-                onAddPlanet={addFamilyPlanet}
-                onClose={() => setStarMapEditorOpen(false)}
-                onRemovePlanet={removePlanet}
-                onRestorePlanet={restorePlanet}
-                onToggleLinkKind={toggleLinkKind}
-                planets={galaxyPlanets}
-                selectedPlanet={selectedPlanet}
-                visibleLinkKinds={visibleLinkKinds}
-              />
-            ) : null}
-          </AnimatePresence>
+          {isGalaxyScene ? (
+            <AnimatePresence>
+              {starMapEditorOpen ? (
+                <StarMapEditor
+                  hiddenPlanets={hiddenPlanets}
+                  links={galaxyLinks}
+                  onAddCustomLink={addCustomLinkFromSelected}
+                  onAddPlanet={addFamilyPlanet}
+                  onClose={() => setStarMapEditorOpen(false)}
+                  onRemovePlanet={removePlanet}
+                  onRestorePlanet={restorePlanet}
+                  onToggleLinkKind={toggleLinkKind}
+                  planets={galaxyPlanets}
+                  selectedPlanet={selectedPlanet}
+                  visibleLinkKinds={visibleLinkKinds}
+                />
+              ) : null}
+            </AnimatePresence>
+          ) : null}
         </section>
       </section>
 

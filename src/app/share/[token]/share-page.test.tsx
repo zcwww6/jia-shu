@@ -17,6 +17,10 @@ const storedBook = {
     sourceRange: "binary_system" as const,
     themeTemplateKey: "family_reunion",
     sourceMemoryIds: ["memory-1", "memory-2"],
+    sourceLabels: {
+      "memory-1": "妈妈的除夕回忆",
+      "memory-2": "我的除夕回忆",
+    },
     intro: "这页家书只使用已确认的记忆星来源。",
     chapters: [],
   },
@@ -51,7 +55,8 @@ describe("/share/[token] 分享页", () => {
     await waitFor(() => expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "1"));
     const firstChapterSpread = screen.getByTestId("visible-family-book-spread");
     expect(within(firstChapterSpread).getByText("共同记住的一天")).toBeInTheDocument();
-    expect(within(firstChapterSpread).getByText("来源 · memory-1")).toBeInTheDocument();
+    expect(within(firstChapterSpread).getByText("来源 · 妈妈的除夕回忆")).toBeInTheDocument();
+    expect(within(firstChapterSpread).queryByText("来源 · memory-1")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "下一组双页" }));
     await waitFor(() => expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "2"));
@@ -72,5 +77,8 @@ describe("/share/[token] 分享页", () => {
     render(element);
 
     expect(screen.getByText("原始生成全文内容。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下一组双页" }));
+    await waitFor(() => expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "1"));
+    expect(within(screen.getByTestId("visible-family-book-spread")).queryByText(/^来源 · /)).not.toBeInTheDocument();
   });
 });

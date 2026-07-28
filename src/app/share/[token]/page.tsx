@@ -16,10 +16,12 @@ export default async function SharedBookPage({
   }
 
   const { draft, body, sections, share } = stored;
-  // Legacy shared-book snapshots deliberately retain only source IDs. Do not
-  // reach into the private book draft to enrich them on this public route.
   const sourceLabels = share.showSourceTitles ? Object.fromEntries(sections.flatMap((section) => (
-    section.sourceMemoryIds.map((memoryId) => [memoryId, memoryId])
+    section.sourceMemoryIds.flatMap((memoryId, index) => {
+      const label = section.sourceLabels?.[index] ?? draft.sourceLabels?.[memoryId];
+      const safeLabel = label?.trim();
+      return safeLabel && !safeLabel.includes(memoryId) ? [[memoryId, safeLabel]] : [];
+    })
   ))) : {};
   const publicBody = share.showOriginalText
     ? body
