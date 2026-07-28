@@ -4,40 +4,7 @@ import type { CSSProperties } from "react";
 import { ImagePlus, Orbit, Sparkles } from "lucide-react";
 
 import type { GalaxyZoneKey, Planet } from "@/shared/types/galaxy";
-
-type ThemeOption = {
-  description: string;
-  label: string;
-  palette: [string, string, string];
-  tone: string;
-};
-
-const themeOptions: ThemeOption[] = [
-  {
-    label: "家书暖夜",
-    description: "灯火、团圆与慢慢靠近的家人",
-    palette: ["#e7b26d", "#9e5a4d", "#251d2c"],
-    tone: "暖金与烟紫",
-  },
-  {
-    label: "极光蓝绿",
-    description: "旅行、成长与向外展开的好奇",
-    palette: ["#a4ead8", "#39899e", "#152b4b"],
-    tone: "海雾与极光",
-  },
-  {
-    label: "橘粉黄昏",
-    description: "相遇、陪伴与被认真记住的日常",
-    palette: ["#ffbe91", "#d97182", "#46233f"],
-    tone: "晚霞与蔷薇",
-  },
-  {
-    label: "深空墨蓝",
-    description: "纪念、私语与不张扬的长久守望",
-    palette: ["#a8b8db", "#515a93", "#11182d"],
-    tone: "月白与深海",
-  },
-];
+import { planetThemeOptions, resolvePlanetTheme, type PlanetThemeOption } from "./planet-theme";
 
 const materialOptions = ["柔光釉面", "晶体折光", "胶片颗粒", "纪念石纹"];
 
@@ -79,7 +46,7 @@ export function PlanetThemeStudio({
   selectedTheme: string;
   selectedZone: GalaxyZoneKey;
 }) {
-  const activeTheme = themeOptions.find((theme) => theme.label === selectedTheme) ?? themeOptions[0];
+  const activeTheme = resolvePlanetTheme(selectedTheme);
   const hasUnsavedPreview = Boolean(
     selectedPlanet && (previewCoverUrl || selectedPlanet.theme !== selectedTheme),
   );
@@ -105,7 +72,7 @@ export function PlanetThemeStudio({
         </div>
 
         <div aria-label="星球主题" className="theme-swatch-grid">
-          {themeOptions.map((theme) => {
+          {planetThemeOptions.map((theme) => {
             const selected = theme.label === selectedTheme;
             return (
               <button
@@ -229,7 +196,7 @@ export function PlanetThemeStudio({
   );
 }
 
-function planetPreviewStyle(assetId: string | null | undefined, previewUrl: string | null, theme: ThemeOption) {
+function planetPreviewStyle(assetId: string | null | undefined, previewUrl: string | null, theme: PlanetThemeOption) {
   const coverUrl = previewUrl ?? (assetId ? `/api/assets/${encodeURIComponent(assetId)}/content` : null);
 
   return {

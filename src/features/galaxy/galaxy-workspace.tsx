@@ -74,6 +74,7 @@ import {
   type LegacyBookVisibility,
 } from "./legacy-book-api";
 import { FamilyBookReader } from "@/features/books/family-book-reader";
+import { planetThemeStyle } from "./planet-theme";
 import { PlanetThemeStudio } from "./planet-theme-studio";
 
 interface GalaxyView {
@@ -296,6 +297,13 @@ function planetCoverStyle(assetId: string | null | undefined): CSSProperties | u
   if (!assetId) return undefined;
 
   return { "--planet-cover": `url("${planetCoverUrl(assetId)}")` } as CSSProperties;
+}
+
+function planetPresentationStyle(planet: Pick<Planet, "coverAssetId" | "theme">): CSSProperties {
+  return {
+    ...planetThemeStyle(planet.theme),
+    ...planetCoverStyle(planet.coverAssetId),
+  };
 }
 
 async function waitForMemoryPollDelay(signal: AbortSignal) {
@@ -1254,9 +1262,10 @@ export function GalaxyWorkspace({
   }
 
   function selectThemeFromNebula(theme: string) {
-    if (!switchGalaxyZone("books")) return;
     setSelectedTheme(theme);
-    setToast(`已带入「${theme}」`);
+    setToast(canOpenSavedBooks
+      ? `已选择「${theme}」，可在家书工坊开始写作`
+      : bookWorkshopLockMessage);
   }
 
   async function lightMemoryStar() {
@@ -2516,6 +2525,7 @@ function ZoneScene({
               label={planet.name}
               left={`${planet.position.x}%`}
               onClick={() => onConfigurePlanetPrivacy(planet)}
+              theme={planet.theme}
               top={`${planet.position.y}%`}
             />
           );
@@ -2544,6 +2554,7 @@ function ZoneScene({
               label={planet.name}
               left={position.left}
               onClick={() => onOpenPlanet(planet.id)}
+              theme={planet.theme}
               top={position.top}
             />
           );
@@ -2643,6 +2654,7 @@ function ZoneScene({
             label={resonanceSourcePlanet.name}
             left="28.5%"
             onClick={() => onOpenPlanet(resonanceSourcePlanet.id)}
+            theme={resonanceSourcePlanet.theme}
             top="50%"
           />
         ) : null}
@@ -2654,6 +2666,7 @@ function ZoneScene({
             label={resonanceTargetPlanet.name}
             left="71.5%"
             onClick={() => onOpenPlanet(resonanceTargetPlanet.id)}
+            theme={resonanceTargetPlanet.theme}
             top="50%"
           />
         ) : null}
@@ -2919,6 +2932,7 @@ function ScenePlanetButton({
   label,
   left,
   onClick,
+  theme,
   top,
 }: {
   badge: string;
@@ -2927,14 +2941,16 @@ function ScenePlanetButton({
   label: string;
   left: string;
   onClick: () => void;
+  theme: string;
   top: string;
 }) {
   return (
     <button
       aria-label={label}
       className={`planet ${className}${coverAssetId ? " has-cover" : ""}`}
+      data-theme={theme}
       onClick={onClick}
-      style={{ left, top, ...planetCoverStyle(coverAssetId) }}
+      style={{ left, top, ...planetThemeStyle(theme), ...planetCoverStyle(coverAssetId) }}
       type="button"
     >
       <span className="badge">{badge}</span>
@@ -3012,7 +3028,7 @@ function GalaxyPlanetObject({
   planet: Planet;
   selected: boolean;
 }) {
-  const style = { left: `${planet.position.x}%`, top: `${planet.position.y}%`, ...planetCoverStyle(planet.coverAssetId) };
+  const style = { left: `${planet.position.x}%`, top: `${planet.position.y}%`, ...planetPresentationStyle(planet) };
   const presentationType = getPlanetPresentationType(planet);
   const showActionRing = selected || closing;
 
@@ -3021,6 +3037,7 @@ function GalaxyPlanetObject({
       <button
         aria-label={`进入${planet.name}漫游`}
         className={`${planetClassByType[presentationType]}${planet.coverAssetId ? " has-cover" : ""} ${selected ? "selected" : ""}`}
+        data-theme={planet.theme}
         onClick={() => onSelect(planet.id)}
         style={style}
         type="button"
@@ -4020,7 +4037,7 @@ function PlanetRoamingOverlay({
           <div className="inner-planet-preview">
           <div
             className={`inner-planet-body ${presentationType}${planet.coverAssetId ? " has-cover" : ""}`}
-            style={planetCoverStyle(planet.coverAssetId)}
+            style={planetPresentationStyle(planet)}
           />
           </div>
           <div>

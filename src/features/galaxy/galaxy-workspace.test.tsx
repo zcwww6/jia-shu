@@ -249,6 +249,37 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByLabelText("选择记忆来源")).toHaveClass("panel-select");
   });
 
+  it("renders a saved planet theme and its private cover in the galaxy scene", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={[{ ...planets[1], theme: "深空墨蓝", coverAssetId: "cover-asset-1" }]}
+        initialLinks={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "进入妈妈的星球漫游" })).toHaveAttribute("data-theme", "深空墨蓝");
+    expect(screen.getByRole("button", { name: "进入妈妈的星球漫游" })).toHaveStyle({
+      "--planet-a": "#a8b8db",
+      "--planet-cover": 'url("/api/assets/cover-asset-1/content")',
+    });
+  });
+
+  it("keeps selected theme nebula in place when saved books make the workshop available", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialGrowingBooks={[{ id: "book-1", title: "外婆的菜谱", status: "ready", memoryCount: 2 }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+    fireEvent.click(screen.getByRole("button", { name: "纪念星册" }));
+
+    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes");
+    expect(screen.getByText("已选择「纪念星册」，可在家书工坊开始写作")).toBeInTheDocument();
+  });
+
   it("persists all selected planet settings from the server response and carries its version forward", async () => {
     const responses = [
       {

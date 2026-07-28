@@ -2564,21 +2564,21 @@ body {
   .inner-planet-body {
     width: 128px;
     height: 128px;
-    background: radial-gradient(circle at 30% 25%, #fff8e8, #e59276 45%, #61363e 80%);
+    background: radial-gradient(circle at 30% 25%, #fff8e8, var(--planet-a, #e59276) 45%, var(--planet-c, #61363e) 80%);
     border-radius: 50%;
     box-shadow:
-      0 0 52px rgba(229, 146, 118, 0.58),
+      0 0 52px color-mix(in srgb, var(--planet-b, #e59276) 58%, transparent),
       inset -18px -18px 28px rgba(0, 0, 0, 0.48);
     transform-style: preserve-3d;
     animation: planetSurfaceSpin 18s ease-in-out infinite alternate;
   }
 
   .inner-planet-body.self {
-    background: radial-gradient(circle at 30% 25%, #f0fffb, #8aa3a9 45%, #2f5058 82%);
+    background: radial-gradient(circle at 30% 25%, #f0fffb, var(--planet-a, #8aa3a9) 45%, var(--planet-c, #2f5058) 82%);
   }
 
   .inner-planet-body.memorial {
-    background: radial-gradient(circle at 30% 25%, #fbf1ff, #b8a1c8 45%, #443253 82%);
+    background: radial-gradient(circle at 30% 25%, #fbf1ff, var(--planet-a, #b8a1c8) 45%, var(--planet-c, #443253) 82%);
   }
 
   .inner-planet-body.has-cover {
