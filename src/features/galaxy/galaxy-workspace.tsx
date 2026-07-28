@@ -208,6 +208,14 @@ function isExpiredIdempotencyError(error: unknown): error is LegacyBookApiError 
     && error.code === "IDEMPOTENCY_EXPIRED";
 }
 
+function clearMatchingExpiredRequestKey(
+  currentKey: string | undefined,
+  requestKey: string,
+  clearRequestKey: () => void,
+) {
+  if (currentKey === requestKey) clearRequestKey();
+}
+
 const themeTemplateKeyByLabel: Record<string, string> = {
   "家庭团圆": "family_reunion",
   "父母人生": "parent_life",
@@ -826,11 +834,14 @@ export function GalaxyWorkspace({
       });
       await openSavedBook(created.id, sourceLabels);
     } catch (error) {
-      if (!isCurrentBookOperation(operation)) return;
-      if (isExpiredIdempotencyError(error)) {
-        if (bookGenerationRequestRef.current?.key === requestKey) {
+      const idempotencyExpired = isExpiredIdempotencyError(error);
+      if (idempotencyExpired) {
+        clearMatchingExpiredRequestKey(bookGenerationRequestRef.current?.key, requestKey, () => {
           bookGenerationRequestRef.current = null;
-        }
+        });
+      }
+      if (!isCurrentBookOperation(operation)) return;
+      if (idempotencyExpired) {
         setBookError(`${errorMessage(error)}，请刷新后重试。`);
         return;
       }
@@ -893,11 +904,14 @@ export function GalaxyWorkspace({
       setBookShares((current) => [share, ...current.filter((item) => item.token !== share.token)]);
       bookShareRequestRef.current = null;
     } catch (error) {
-      if (!isCurrentBookOperation(operation)) return;
-      if (isExpiredIdempotencyError(error)) {
-        if (bookShareRequestRef.current?.key === requestKey) {
+      const idempotencyExpired = isExpiredIdempotencyError(error);
+      if (idempotencyExpired) {
+        clearMatchingExpiredRequestKey(bookShareRequestRef.current?.key, requestKey, () => {
           bookShareRequestRef.current = null;
-        }
+        });
+      }
+      if (!isCurrentBookOperation(operation)) return;
+      if (idempotencyExpired) {
         setShareError(`${errorMessage(error)}，请刷新后重试。`);
         return;
       }
@@ -922,11 +936,14 @@ export function GalaxyWorkspace({
       setBookShares((current) => current.filter((share) => share.token !== token));
       bookShareRevokeRequestRef.current.delete(requestSignature);
     } catch (error) {
-      if (!isCurrentBookOperation(operation)) return;
-      if (isExpiredIdempotencyError(error)) {
-        if (bookShareRevokeRequestRef.current.get(requestSignature) === requestKey) {
+      const idempotencyExpired = isExpiredIdempotencyError(error);
+      if (idempotencyExpired) {
+        clearMatchingExpiredRequestKey(bookShareRevokeRequestRef.current.get(requestSignature), requestKey, () => {
           bookShareRevokeRequestRef.current.delete(requestSignature);
-        }
+        });
+      }
+      if (!isCurrentBookOperation(operation)) return;
+      if (idempotencyExpired) {
         setShareError(`${errorMessage(error)}，请刷新后重试。`);
         return;
       }

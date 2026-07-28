@@ -289,6 +289,162 @@ describe("GalaxyWorkspace persisted book flow", () => {
     expect(screen.getByRole("button", { name: "创建分享链接" })).toBeEnabled();
   });
 
+  it("rotates A share and revoke keys after their expired responses arrive while B is open", async () => {
+    const expiredCreate = deferred<Response>();
+    const expiredRevoke = deferred<Response>();
+    let createAttempts = 0;
+    let revokeAttempts = 0;
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === `/api/books/${savedBook.id}` && init?.method === "GET") {
+        return Promise.resolve(new Response(JSON.stringify(savedBookDetail), { status: 200 }));
+      }
+      if (url === `/api/books/${savedBook.id}/shares` && init?.method === "GET") {
+        return Promise.resolve(new Response(JSON.stringify({ shares: [{ token: "a-share", url: "/share/a-share" }] }), { status: 200 }));
+      }
+      if (url === `/api/books/${savedBook.id}/shares` && init?.method === "POST") {
+        createAttempts += 1;
+        return createAttempts === 1
+          ? expiredCreate.promise
+          : Promise.resolve(new Response(JSON.stringify({ token: "a-new-share", url: "/share/a-new-share" }), { status: 201 }));
+      }
+      if (url === `/api/books/${savedBook.id}/shares/a-share/revoke` && init?.method === "POST") {
+        revokeAttempts += 1;
+        return revokeAttempts === 1
+          ? expiredRevoke.promise
+          : Promise.resolve(new Response(JSON.stringify({ token: "a-share", revoked: true }), { status: 200 }));
+      }
+      if (url === `/api/books/${secondSavedBook.id}` && init?.method === "GET") {
+        return Promise.resolve(new Response(JSON.stringify(secondSavedBookDetail), { status: 200 }));
+      }
+      if (url === `/api/books/${secondSavedBook.id}/shares` && init?.method === "GET") {
+        return Promise.resolve(new Response(JSON.stringify({ shares: [{ token: "b-share", url: "/share/b-share" }] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ message: `unexpected ${url}` }), { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} initialGrowingBooks={[savedBook, secondSavedBook]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
+    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    await waitFor(() => expect(screen.getByText(savedBookDetail.body)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "创建分享链接" }));
+    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    await waitFor(() => expect(screen.getByText(secondSavedBookDetail.body)).toBeInTheDocument());
+
+    await act(async () => {
+      expiredCreate.resolve(new Response(JSON.stringify({
+        code: "IDEMPOTENCY_EXPIRED",
+        message: "A 创建分享请求已过期",
+      }), { status: 409 }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText("家书标题")).toHaveValue(secondSavedBook.title);
+    expect(screen.getByText("/share/b-share")).toBeInTheDocument();
+    expect(screen.queryByText(/A 创建分享请求已过期/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    await waitFor(() => expect(screen.getByText(savedBookDetail.body)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "创建分享链接" }));
+    await waitFor(() => expect(screen.getByText("/share/a-new-share")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "撤回分享：a-share" }));
+    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    await waitFor(() => expect(screen.getByText(secondSavedBookDetail.body)).toBeInTheDocument());
+    await act(async () => {
+      expiredRevoke.resolve(new Response(JSON.stringify({
+        code: "IDEMPOTENCY_EXPIRED",
+        message: "A 撤回分享请求已过期",
+      }), { status: 409 }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText("家书标题")).toHaveValue(secondSavedBook.title);
+    expect(screen.getByText("/share/b-share")).toBeInTheDocument();
+    expect(screen.queryByText(/A 撤回分享请求已过期/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${savedBook.title}` }));
+    await waitFor(() => expect(screen.getByText(savedBookDetail.body)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "撤回分享：a-share" }));
+    await waitFor(() => expect(screen.queryByText("/share/a-share")).not.toBeInTheDocument());
+
+    const callsFor = (url: string) => fetchMock.mock.calls.filter(([calledUrl, init]) => (
+      calledUrl === url && (init as RequestInit | undefined)?.method === "POST"
+    ));
+    const headerKey = (call: unknown[]) => ((call[1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"];
+    const createCalls = callsFor(`/api/books/${savedBook.id}/shares`);
+    const revokeCalls = callsFor(`/api/books/${savedBook.id}/shares/a-share/revoke`);
+    expect(headerKey(createCalls[0]!)).not.toBe(headerKey(createCalls[1]!));
+    expect(headerKey(revokeCalls[0]!)).not.toBe(headerKey(revokeCalls[1]!));
+  });
+
+  it("keeps B visible and rotates A generation key when its expired response arrives after B is selected", async () => {
+    const expiredGeneration = deferred<Response>();
+    let generationAttempts = 0;
+    let bDetailAttempts = 0;
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === `/api/resonances/${confirmedResonance.id}/confirm`) {
+        return Promise.resolve(new Response(JSON.stringify({ ...confirmedResonance, status: "confirmed" }), { status: 200 }));
+      }
+      if (url === "/api/books" && init?.method === "POST") {
+        generationAttempts += 1;
+        return generationAttempts === 1
+          ? expiredGeneration.promise
+          : Promise.resolve(new Response(JSON.stringify({ message: "重新进入生成流程" }), { status: 503 }));
+      }
+      if (url === `/api/books/${secondSavedBook.id}` && init?.method === "GET") {
+        bDetailAttempts += 1;
+        if (bDetailAttempts > 1) {
+          return Promise.resolve(new Response(JSON.stringify({ message: "返回生成流程" }), { status: 404 }));
+        }
+        return Promise.resolve(new Response(JSON.stringify(secondSavedBookDetail), { status: 200 }));
+      }
+      if (url === `/api/books/${secondSavedBook.id}/shares` && init?.method === "GET") {
+        return Promise.resolve(new Response(JSON.stringify({ shares: [{ token: "b-share", url: "/share/b-share" }] }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ message: `unexpected ${url}` }), { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={confirmedMemories}
+        initialPendingResonances={[confirmedResonance]}
+        initialGrowingBooks={[secondSavedBook]}
+      />,
+    );
+
+    await enterConfirmedBookWorkshop();
+    fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
+    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    await waitFor(() => expect(screen.getByText(secondSavedBookDetail.body)).toBeInTheDocument());
+
+    await act(async () => {
+      expiredGeneration.resolve(new Response(JSON.stringify({
+        code: "IDEMPOTENCY_EXPIRED",
+        message: "A 生成请求已过期",
+      }), { status: 409 }));
+      await Promise.resolve();
+    });
+
+    expect(screen.getByLabelText("家书标题")).toHaveValue(secondSavedBook.title);
+    expect(screen.getByLabelText("家书正文")).toHaveValue(secondSavedBookDetail.body);
+    expect(screen.getByText("/share/b-share")).toBeInTheDocument();
+    expect(screen.queryByText(/A 生成请求已过期/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: `打开已保存家书：${secondSavedBook.title}` }));
+    await waitFor(() => expect(screen.getByText("返回生成流程")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
+    await waitFor(() => expect(screen.getByText("重新进入生成流程")).toBeInTheDocument());
+
+    const generationCalls = fetchMock.mock.calls.filter(([url, init]) => (
+      url === "/api/books" && (init as RequestInit | undefined)?.method === "POST"
+    ));
+    const headerKey = (call: unknown[]) => ((call[1] as RequestInit).headers as Record<string, string>)["Idempotency-Key"];
+    expect(headerKey(generationCalls[0]!)).not.toBe(headerKey(generationCalls[1]!));
+  });
+
   it("posts every session-confirmed resonance source and lets the server enforce authorization", async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
       if (url === `/api/resonances/${confirmedResonance.id}/confirm`) {
