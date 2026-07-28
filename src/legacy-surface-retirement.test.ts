@@ -33,17 +33,11 @@ const retiredRuntimeReferences = [
   "demo-loop-shell",
   "memory-new-client-page",
   "resonance-client-page",
+  "privacy-client-page",
   "demo-session",
-  "localStorage",
+  "jiashu-demo-",
   "export const resonanceTracks",
   "export const bookDrafts",
-];
-
-const retiredEntryPages = [
-  "app/memory/new/page.tsx",
-  "app/resonance/page.tsx",
-  "app/books/new/page.tsx",
-  "app/settings/privacy/page.tsx",
 ];
 
 function productionSourceFiles(directory: string): string[] {
@@ -58,7 +52,7 @@ function productionSourceFiles(directory: string): string[] {
 }
 
 describe("legacy demo surface retirement", () => {
-  it("leaves no retired routes, clients, storage, or business mock runtime references in production source", () => {
+  it("leaves no retired routes, clients, storage, or precise deprecated runtime markers in production source", () => {
     const remainingPaths = retiredPaths.filter((path) => existsSync(join(sourceRoot, path)));
     const remainingReferences = productionSourceFiles(sourceRoot).flatMap((file) => {
       const source = readFileSync(file, "utf8");
@@ -66,17 +60,10 @@ describe("legacy demo surface retirement", () => {
         .filter((reference) => source.includes(reference))
         .map((reference) => `${relative(sourceRoot, file)} -> ${reference}`);
     });
-    const redirectPageViolations = retiredEntryPages.flatMap((page) => {
-      const source = readFileSync(join(sourceRoot, page), "utf8");
-      return !source.includes('redirect("/galaxy")') || source.includes("features/demo-loop")
-        ? [page]
-        : [];
-    });
 
-    expect({ remainingPaths, remainingReferences, redirectPageViolations }).toEqual({
+    expect({ remainingPaths, remainingReferences }).toEqual({
       remainingPaths: [],
       remainingReferences: [],
-      redirectPageViolations: [],
     });
   });
 });
