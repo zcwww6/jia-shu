@@ -1281,9 +1281,9 @@ export function GalaxyWorkspace({
 
   function selectThemeFromNebula(theme: string) {
     setSelectedTheme(theme);
-    setToast(canOpenSavedBooks
-      ? `已选择「${theme}」，可在家书工坊开始写作`
-      : bookWorkshopLockMessage);
+    if (switchGalaxyZone("books")) {
+      setToast(`已选择「${theme}」，已进入家书工坊`);
+    }
   }
 
   async function lightMemoryStar() {

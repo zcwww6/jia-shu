@@ -264,7 +264,7 @@ describe("GalaxyWorkspace", () => {
     });
   });
 
-  it("keeps selected theme nebula in place when saved books make the workshop available", () => {
+  it("opens the book workshop with the selected nebula theme when saved books are available", () => {
     render(
       <GalaxyWorkspace
         initialPlanets={planets}
@@ -276,8 +276,9 @@ describe("GalaxyWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
     fireEvent.click(screen.getByRole("button", { name: "纪念星册" }));
 
-    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes");
-    expect(screen.getByText("已选择「纪念星册」，可在家书工坊开始写作")).toBeInTheDocument();
+    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-bookmaker");
+    expect(screen.getByRole("heading", { name: "把写好的家书，摆回家人的星系" })).toBeInTheDocument();
+    expect(screen.getByText(/当前主题为「纪念星册」/)).toBeInTheDocument();
   });
 
   it("persists all selected planet settings from the server response and carries its version forward", async () => {
