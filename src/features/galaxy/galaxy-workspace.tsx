@@ -2611,8 +2611,10 @@ function ZoneScene({
           onSaveTheme={() => onSaveSelectedPlanetTheme(selectedWorkshopBg)}
           onSelectCover={onSelectPlanetCover}
           onSelectMaterial={setSelectedWorkshopMaterial}
+          onSelectPlanet={onEditPlanetTheme}
           onSelectTheme={setSelectedWorkshopBg}
           onSelectZone={setSelectedWorkshopZone}
+          planets={planets}
           previewCoverUrl={selectedPlanetCoverPreviewUrl}
           selectedCoverFile={selectedPlanetCoverFile}
           selectedMaterial={selectedWorkshopMaterial}

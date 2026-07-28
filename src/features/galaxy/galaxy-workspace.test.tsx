@@ -497,6 +497,21 @@ describe("GalaxyWorkspace", () => {
     expect(screen.getByText("星球封面已保存")).toBeInTheDocument();
   });
 
+  it("lets a direct workshop visit select a planet before saving its theme or cover", () => {
+    renderDemoGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "星球工坊" }));
+
+    expect(screen.getByText("尚未选择星球")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存星球主题" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "选择星球：妈妈的星球" }));
+
+    expect(screen.getByText("正在塑造")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存星球主题" })).toBeEnabled();
+    expect(screen.getByLabelText("上传星球封面")).toBeInTheDocument();
+  });
+
   it("previews an unsaved photo and theme on the selected planet before saving either one", () => {
     const createObjectURL = vi.fn(() => "blob:planet-cover-preview");
     const revokeObjectURL = vi.fn();

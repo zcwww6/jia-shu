@@ -22,8 +22,10 @@ export function PlanetThemeStudio({
   onSaveTheme,
   onSelectCover,
   onSelectMaterial,
+  onSelectPlanet,
   onSelectTheme,
   onSelectZone,
+  planets,
   previewCoverUrl,
   selectedCoverFile,
   selectedMaterial,
@@ -37,8 +39,10 @@ export function PlanetThemeStudio({
   onSaveTheme: () => void;
   onSelectCover: (file: File | null) => void;
   onSelectMaterial: (material: string) => void;
+  onSelectPlanet: (planetId: string) => void;
   onSelectTheme: (theme: string) => void;
   onSelectZone: (zone: GalaxyZoneKey) => void;
+  planets: Planet[];
   previewCoverUrl: string | null;
   selectedCoverFile: File | null;
   selectedMaterial: string;
@@ -70,6 +74,31 @@ export function PlanetThemeStudio({
             </small>
           ) : <small>主题会在选择星球后写入数据库。</small>}
         </div>
+
+        {planets.length > 0 ? (
+          <div aria-label="选择要塑造的星球" className="workshop-planet-picker">
+            <span>从星系里挑一颗星球</span>
+            <div>
+              {planets.map((planet) => {
+                const selected = planet.id === selectedPlanet?.id;
+                return (
+                  <button
+                    aria-label={`选择星球：${planet.name}`}
+                    aria-pressed={selected}
+                    className={selected ? "selected" : ""}
+                    key={planet.id}
+                    onClick={() => onSelectPlanet(planet.id)}
+                    type="button"
+                  >
+                    <i aria-hidden="true" className="workshop-planet-picker-orb" />
+                    <span>{planet.name}</span>
+                    <small>{planet.lifeState === "memorial" ? "纪念星" : planet.role}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         <div aria-label="星球主题" className="theme-swatch-grid">
           {planetThemeOptions.map((theme) => {
