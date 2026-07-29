@@ -94,10 +94,10 @@ describe("getHomeData", () => {
 
     expect(result.confirmedMemories).toEqual([
       {
-        id: "memory-mom", planetId: "planet-mom", title: "除夕合照", occurredAt: "2018 年除夕", location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "全家团圆",
+        id: "memory-mom", planetId: "planet-mom", title: "除夕合照", occurredAt: "2018 年除夕", location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "全家团圆", allowBook: false,
       },
       {
-        id: "memory-dad", planetId: "planet-dad", title: "未命名记忆", occurredAt: "", location: "", people: [], emotions: [], visibility: "private", summary: "",
+        id: "memory-dad", planetId: "planet-dad", title: "未命名记忆", occurredAt: "", location: "", people: [], emotions: [], visibility: "private", summary: "", allowBook: false,
       },
     ]);
     expect(JSON.stringify(result.confirmedMemories)).not.toContain("不得泄露");

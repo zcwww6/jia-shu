@@ -165,6 +165,7 @@ function mapConfirmedMemories(planets: HomePlanetRecord[]): MemoryStar[] {
       emotions: [],
       visibility: memory.visibility,
       summary: memory.summary ?? "",
+      allowBook: memory.allowBook === true,
     })));
 }
 

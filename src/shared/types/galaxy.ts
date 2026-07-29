@@ -173,6 +173,7 @@ export interface MemoryStar {
   emotions: string[];
   visibility: Visibility;
   summary: string;
+  allowBook?: boolean;
 }
 
 export interface StoryNode {

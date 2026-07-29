@@ -68,7 +68,16 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ...review, status: "confirmed", version: 4 }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={persistedPlanets}
+        initialLinks={[]}
+        initialConfirmedMemories={[{
+          id: "memory-1", planetId: "planet-mom", title: "先前版本的除夕合照", occurredAt: "2018 年除夕",
+          location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "等待确认的旧版本。",
+        }]}
+      />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈漫游" }));
     fireEvent.click(screen.getByRole("button", { name: "点亮记忆" }));
 
@@ -95,6 +104,30 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       expect.objectContaining({ headers: expect.objectContaining({ "If-Match-Version": "3" }) }),
     );
     expect(screen.getByRole("checkbox", { name: "装订来源：除夕合照" })).toBeChecked();
+    expect(screen.getAllByRole("checkbox", { name: "装订来源：除夕合照" })).toHaveLength(1);
+  });
+
+  it("keeps a confirmed memory without book consent out of the curator and explains why", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "memory-1", status: "draft", version: 1 }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "queued" }), { status: 202 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "job-1", status: "succeeded" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(review), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...review, status: "confirmed", version: 4, allowBook: false }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆" }));
+    submitTextMemory();
+    await waitFor(() => expect(screen.getByRole("button", { name: "确认点亮记忆星" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "确认点亮记忆星" }));
+
+    await waitFor(() => expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes"));
+    expect(screen.queryByText("已加入当前主题的装订清单")).not.toBeInTheDocument();
+    expect(screen.getByText("记忆已确认，未加入家书装订清单")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "装订来源：除夕合照" })).not.toBeInTheDocument();
   });
 
   it("uploads one voice source before creating its real AI memory draft", async () => {
@@ -115,7 +148,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     const file = new File(["voice"], "family-story.m4a", { type: "audio/mp4" });
     fireEvent.change(screen.getByLabelText("上传语音"), { target: { files: [file] } });
 
-    fireEvent.click(screen.getByRole("button", { name: "发送给 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给智能整理" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     const uploadRequest = fetchMock.mock.calls[0][1] as RequestInit;
@@ -174,12 +207,12 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     const file = new File(["diary"], "mom-diary.pdf", { type: "application/pdf" });
     fireEvent.change(screen.getByLabelText("上传文件"), { target: { files: [file] } });
 
-    fireEvent.click(screen.getByRole("button", { name: "发送给 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给智能整理" }));
     await waitFor(() => expect(screen.getByText("文件上传响应在提交后丢失")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "关闭面板" }));
     fireEvent.click(screen.getByRole("button", { name: "进入妈妈漫游" }));
     fireEvent.click(screen.getByRole("button", { name: "点亮记忆" }));
-    fireEvent.click(screen.getByRole("button", { name: "发送给 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给智能整理" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     const uploads = fetchMock.mock.calls.filter(([url]) => url === "/api/assets");
@@ -214,7 +247,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       target: { files: [new File(["diary"], "mom-diary.pdf", { type: "application/pdf" })] },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "发送给 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给智能整理" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const uploadRequest = fetchMock.mock.calls[0][1] as RequestInit;
     const signal = uploadRequest.signal as AbortSignal;
@@ -258,9 +291,9 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       target: { files: [new File(["image"], "spring.jpg", { type: "image/jpeg" })] },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "发送给 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送给智能整理" }));
     await waitFor(() => expect(screen.getByText("图片草稿响应在提交后丢失")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/assets")).toHaveLength(1);
@@ -275,7 +308,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
   it("authorizes a newly confirmed allowBook memory for a same-session resonance book", async () => {
     const existingMemory = {
       id: "memory-2", planetId: "planet-self", title: "另一颗已授权记忆星", occurredAt: "2018 年除夕",
-      location: "新房", people: ["我"], emotions: [], visibility: "family" as const, summary: "已有真实来源。",
+      location: "新房", people: ["我"], emotions: [], visibility: "family" as const, summary: "已有真实来源。", allowBook: true,
     };
     const candidate = {
       id: "resonance-1", sourceMemoryId: "memory-1", targetMemoryId: "memory-2", score: 0.91,
@@ -309,6 +342,9 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
         body: expect.stringContaining('"allowBook":true'),
       }),
     );
+    await waitFor(() => expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes"));
+    fireEvent.click(screen.getByRole("button", { name: "记忆星群" }));
+    fireEvent.click(screen.getByRole("button", { name: "除夕合照" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "沿共鸣星轨前进" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "沿共鸣星轨前进" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "共鸣候选：除夕合照 ↔ 另一颗已授权记忆星" })).toBeInTheDocument());
@@ -334,7 +370,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     submitTextMemory();
     await waitFor(() => expect(screen.getByText("响应在提交后丢失")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
     await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories")).toHaveLength(2));
 
     const draftRequests = fetchMock.mock.calls.filter(([url]) => url === "/api/memories");
@@ -355,7 +391,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     submitTextMemory();
     await waitFor(() => expect(screen.getByText("AI 作业响应在提交后丢失")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
     await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(2));
 
     const jobRequests = fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs");
@@ -383,7 +419,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     });
     expect(screen.getByText("网络短暂中断")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
@@ -415,7 +451,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     });
     expect(screen.getByText("网络短暂中断")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
     });
@@ -447,7 +483,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     });
     expect(screen.getByText("审阅暂不可用")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
     await act(async () => {
       await Promise.resolve();
     });
@@ -471,7 +507,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     submitTextMemory();
     await waitFor(() => expect(screen.getByText("作业请求超时")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(2));
   });
@@ -590,7 +626,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     submitTextMemory();
     await waitFor(() => expect(screen.getByText("模型不可用")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "重试 AI 整理" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试智能整理" }));
 
     await waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url === "/api/memories/memory-1/ai-jobs")).toHaveLength(2));
     await waitFor(() => expect(screen.getByText("第二次失败")).toBeInTheDocument());
@@ -608,7 +644,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     submitTextMemory();
 
     await waitFor(() => expect(screen.getByText("模型不可用")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "重试 AI 整理" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试智能整理" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "新点亮：除夕合照" })).not.toBeInTheDocument();
   });
 
@@ -710,7 +746,7 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
 
-    expect(screen.getByText("AI 整理仍在进行中，请稍后重试。")).toBeInTheDocument();
+    expect(screen.getByText("智能整理仍在进行中，请稍后重试。")).toBeInTheDocument();
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/ai-jobs/job-1")).toHaveLength(20);
   });
 });

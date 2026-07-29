@@ -76,6 +76,8 @@ import {
 import { FamilyBookReader } from "@/features/books/family-book-reader";
 import { planetThemeStyle } from "./planet-theme";
 import { PlanetThemeStudio } from "./planet-theme-studio";
+import { ThemeNebulaCurator, type ConfirmedMemorySummary } from "./theme-nebula-curator";
+import { getThemeNebula, type ThemeNebulaKey } from "./theme-nebula-data";
 
 interface GalaxyView {
   panX: number;
@@ -106,8 +108,6 @@ const galaxyNavigation: Array<{ key: GalaxyZoneKey; label: string }> = [
 ];
 
 type LegacyPlanetChanges = Omit<LegacyPlanetUpdate, "id" | "version">;
-
-const bookWorkshopLockMessage = "请先确认一条共鸣星轨，再进入家书工坊。";
 
 function sourceMemoryIdsForConfirmedResonance(candidate: LegacyPendingResonance | undefined) {
   if (!candidate?.sourceMemoryId || !candidate.targetMemoryId) return null;
@@ -157,7 +157,7 @@ function buildRouteSteps(planets: Planet[], memories: MemoryStar[]): RouteStep[]
       targetId: primaryMemory.id,
     } : {
       action: "quickRecord",
-      detail: `为${primaryPlanet.name}留下第一段真实记忆，再交给 AI 整理。`,
+      detail: `为${primaryPlanet.name}留下第一段真实记忆，再交给智能整理。`,
       label: `记录${primaryPlanet.name}的一段记忆`,
       targetId: primaryPlanet.id,
     },
@@ -340,10 +340,10 @@ async function waitForMemoryExtraction(
     if (!control.isCurrent() || control.signal.aborted) return false;
     if (job.status === "completed" || job.status === "succeeded") return true;
     if (job.status === "failed") {
-      throw new Error(job.error ?? job.errorCode ?? "AI 整理失败，请稍后重试。");
+      throw new Error(job.error ?? job.errorCode ?? "智能整理失败，请稍后重试。");
     }
     if (job.status !== "queued" && job.status !== "processing") {
-      throw new Error("AI 作业状态异常，请稍后重试。");
+      throw new Error("智能作业状态异常，请稍后重试。");
     }
 
     if (!(await waitForMemoryPollDelay(control.signal)) || !control.isCurrent()) return false;
@@ -352,7 +352,7 @@ async function waitForMemoryExtraction(
     onJobUpdate(job);
   }
 
-  throw new Error("AI 整理仍在进行中，请稍后重试。");
+  throw new Error("智能整理仍在进行中，请稍后重试。");
 }
 
 const planetBadgeByType: Record<Planet["type"], string> = {
@@ -421,7 +421,7 @@ const zoneContent: Record<
   privacy: {
     title: "隐私星域",
     eyebrow: "分享边界",
-    body: "私密核心、家庭可见和公开分享是三层不同轨道。AI 只点亮候选连接，分享前必须由用户确认范围。",
+    body: "私密核心、家庭可见和公开分享是三层不同轨道。智能建议只点亮候选连接，分享前必须由用户确认范围。",
     tags: ["私密核心", "家庭可见", "公开分享轨道"],
   },
   memorial: {
@@ -440,7 +440,7 @@ const zoneContent: Record<
     title: "记忆星群",
     eyebrow: "点亮记忆星",
     body: "记忆以发光节点进入星系。表单只作为轻量入口，真正的浏览和补充发生在星球漫游中。",
-    tags: ["一句话录入", "AI 整理候选", "补充视角"],
+    tags: ["一句话录入", "智能整理候选", "补充视角"],
   },
   resonance: {
     title: "共鸣星轨",
@@ -518,6 +518,9 @@ export function GalaxyWorkspace({
   const [selectedPlanetCoverPreviewUrl, setSelectedPlanetCoverPreviewUrl] = useState<string | null>(null);
   const [planetCoverSaving, setPlanetCoverSaving] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState("家庭团圆");
+  const [curatorTheme, setCuratorTheme] = useState<ThemeNebulaKey>("亲子成长");
+  const [curatedMemoryIds, setCuratedMemoryIds] = useState<string[]>([]);
+  const [bookSourceMode, setBookSourceMode] = useState<"curated" | "resonance">("resonance");
   const [renamePlanetTarget, setRenamePlanetTarget] = useState<Planet | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -655,7 +658,7 @@ export function GalaxyWorkspace({
   );
   const memoryPrimaryActionLabel = hasMatchingMemoryDraft
     ? memoryFlowError ? "重试整理" : "继续整理"
-    : quickRecordSource === "text" ? "点亮为记忆星" : "发送给 AI 整理";
+    : quickRecordSource === "text" ? "点亮为记忆星" : "发送给智能整理";
   const selectedMemory = selectedMemoryId
     ? litMemories.find((memory) => memory.id === selectedMemoryId) ?? null
     : null;
@@ -678,12 +681,51 @@ export function GalaxyWorkspace({
   const confirmedBookSources = useMemo(() => {
     if (!confirmedResonanceSourceMemoryIds) return [];
 
-    const titleById = new Map(litMemories.map((memory) => [memory.id, memory.title]));
-    return confirmedResonanceSourceMemoryIds.map((id) => ({
-      id,
-      title: titleById.get(id)?.trim() || "已确认记忆",
-    }));
+    const bookEligibleMemoryById = new Map(
+      litMemories
+        .filter((memory) => memory.allowBook === true)
+        .map((memory) => [memory.id, memory]),
+    );
+    return confirmedResonanceSourceMemoryIds.flatMap((id) => {
+      const memory = bookEligibleMemoryById.get(id);
+      return memory ? [{ id, title: memory.title.trim() || "已确认记忆" }] : [];
+    });
   }, [confirmedResonanceSourceMemoryIds, litMemories]);
+  const availableCuratedMemories = useMemo<ConfirmedMemorySummary[]>(
+    () => litMemories.filter((memory) => memory.allowBook === true).map((memory) => ({
+      id: memory.id,
+      title: memory.title,
+      summary: memory.summary,
+    })),
+    [litMemories],
+  );
+  const curatedBookSources = useMemo(() => {
+    const eligibleTitleById = new Map(
+      litMemories
+        .filter((memory) => memory.allowBook === true)
+        .map((memory) => [memory.id, memory.title]),
+    );
+    return curatedMemoryIds.flatMap((id) => {
+      const title = eligibleTitleById.get(id);
+      return title === undefined ? [] : [{ id, title: title.trim() || "已确认记忆" }];
+    });
+  }, [curatedMemoryIds, litMemories]);
+  const usesCuratedBookSources = curatedBookSources.length > 0 && (
+    !hasConfirmedResonance || bookSourceMode === "curated"
+  );
+  const bookSources = usesCuratedBookSources ? curatedBookSources : confirmedBookSources;
+  const bookTheme = usesCuratedBookSources ? curatorTheme : selectedTheme;
+  const bookSourceRange = usesCuratedBookSources
+    ? getThemeNebula(curatorTheme).sourceRange
+    : "binary_system" as const;
+  const hasAllConfirmedResonanceBookSources = hasConfirmedResonance
+    && confirmedBookSources.length === confirmedResonanceSourceMemoryIds?.length;
+  const bookWorkshopLockMessage = hasConfirmedResonance && !hasAllConfirmedResonanceBookSources
+    ? "这条共鸣星轨的所有来源均需授权家书后才能生成。"
+    : "请先确认一条共鸣星轨，再进入家书工坊。";
+  const canCreateBook = usesCuratedBookSources
+    ? curatedBookSources.length > 0
+    : hasAllConfirmedResonanceBookSources && confirmedBookSources.length > 0;
   const canOpenSavedBooks = growingBooks.length > 0;
 
   function abortMemoryFlowOperation() {
@@ -908,21 +950,16 @@ export function GalaxyWorkspace({
   }
 
   async function generateLegacyBook() {
-    if (!hasConfirmedResonance || !confirmedResonanceSourceMemoryIds) {
+    if (!canCreateBook || bookSources.length === 0) {
       setBookError(bookWorkshopLockMessage);
-      return;
-    }
-
-    if (confirmedBookSources.length !== confirmedResonanceSourceMemoryIds.length) {
-      setBookError("这条共鸣星轨的来源尚未获得生成家书授权。");
       return;
     }
 
     const input = {
       ...(bookTitleDraft.trim() ? { title: bookTitleDraft.trim() } : {}),
-      sourceMemoryIds: confirmedBookSources.map((source) => source.id),
-      sourceRange: "binary_system" as const,
-      themeTemplateKey: themeTemplateKeyByLabel[selectedTheme] ?? selectedTheme,
+      sourceMemoryIds: bookSources.map((source) => source.id),
+      sourceRange: bookSourceRange,
+      themeTemplateKey: themeTemplateKeyByLabel[bookTheme] ?? bookTheme,
       visibility: bookVisibility,
     };
     const requestKey = bookGenerationRequestKey(JSON.stringify(input));
@@ -937,7 +974,7 @@ export function GalaxyWorkspace({
       const sourceLabels = Object.fromEntries(created.draft.sourceMemoryIds.map((id) => [
         id,
         created.draft.sourceLabels?.[id]
-          ?? confirmedBookSources.find((source) => source.id === id)?.title
+          ?? bookSources.find((source) => source.id === id)?.title
           ?? "已授权记忆",
       ]));
       const createdDetail: ActiveLegacyBook = {
@@ -1114,7 +1151,7 @@ export function GalaxyWorkspace({
   const appClassName = [
     "app",
     sceneClassByZone[activeZone],
-    nebulaClassByTheme[selectedTheme] ?? "nebula-family",
+    nebulaClassByTheme[activeZone === "themes" ? curatorTheme : bookTheme] ?? "nebula-family",
     elderMode ? "elder" : "",
     immersiveMode ? "immersive-ui-active" : "",
     autoCruise ? "auto-cruise-active" : "",
@@ -1253,7 +1290,7 @@ export function GalaxyWorkspace({
     zone: GalaxyZoneKey,
     options: { panel?: PanelKey | null; preserveSelectedPlanet?: boolean } = {},
   ) {
-    if (zone === "books" && !hasConfirmedResonance && !canOpenSavedBooks) {
+    if (zone === "books" && !hasConfirmedResonance && !canOpenSavedBooks && curatedBookSources.length === 0) {
       setToast(bookWorkshopLockMessage);
       return false;
     }
@@ -1279,11 +1316,27 @@ export function GalaxyWorkspace({
     switchGalaxyZone(zone);
   }
 
-  function selectThemeFromNebula(theme: string) {
+  function selectThemeFromNebula(theme: ThemeNebulaKey) {
+    setCuratorTheme(theme);
     setSelectedTheme(theme);
-    if (switchGalaxyZone("books")) {
-      setToast(`已选择「${theme}」，已进入家书工坊`);
-    }
+    setToast(`已选择「${theme}」主题，可继续挑选装订素材`);
+  }
+
+  function openCuratorDocumentRecord() {
+    if (quickRecordSource !== "document") changeQuickRecordSource("document");
+    openPanel("quickRecord");
+  }
+
+  function startCuratedBinding() {
+    if (curatedBookSources.length === 0) return;
+    setBookSourceMode("curated");
+    switchGalaxyZone("books");
+  }
+
+  function updateCuratedMemoryIds(ids: string[]) {
+    const eligibleIds = new Set(availableCuratedMemories.map((memory) => memory.id));
+    setCuratedMemoryIds([...new Set(ids.filter((id) => eligibleIds.has(id)))]);
+    setBookSourceMode("curated");
   }
 
   async function lightMemoryStar() {
@@ -1294,7 +1347,7 @@ export function GalaxyWorkspace({
     }
 
     if (quickRecordSource !== "text" && !quickRecordFile) {
-      setMemoryFlowError("先选择一份真实来源，再发送给 AI 整理");
+      setMemoryFlowError("先选择一份真实来源，再发送给智能整理");
       return;
     }
 
@@ -1429,7 +1482,7 @@ export function GalaxyWorkspace({
           await loadMemoryReview(memoryDraftId, operation);
         }
       } else {
-        setMemoryFlowError("AI 作业状态未知，请刷新或重新打开这条草稿后再试");
+        setMemoryFlowError("智能作业状态未知，请刷新或重新打开这条草稿后再试");
       }
     } catch (error) {
       if (!isCurrentMemoryFlowOperation(operation)) return;
@@ -1469,6 +1522,7 @@ export function GalaxyWorkspace({
         emotions: [],
         visibility: confirmed.visibility,
         summary: confirmed.summary ?? reviewSummary,
+        allowBook: confirmed.allowBook,
       };
       setLitMemories((current) => [...current.filter((item) => item.id !== memory.id), memory]);
       setGalaxyPlanets((current) => current.map((planet) => (
@@ -1478,8 +1532,14 @@ export function GalaxyWorkspace({
       )));
       setMemoryReview(null);
       setSelectedMemoryId(memory.id);
-      switchGalaxyZone("memories", { panel: "memory1" });
-      setToast("已确认点亮为记忆星，默认不公开");
+      if (memory.allowBook) {
+        setCuratedMemoryIds((current) => [...new Set([...current, memory.id])]);
+        setToast("已加入当前主题的装订清单");
+      } else {
+        setToast("记忆已确认，未加入家书装订清单");
+      }
+      setSelectedTheme(curatorTheme);
+      switchGalaxyZone("themes");
     } catch (error) {
       setMemoryFlowError(errorMessage(error));
     } finally {
@@ -1603,6 +1663,7 @@ export function GalaxyWorkspace({
       }
 
       setResonanceDecisionMessage("已确认这条星轨，可进入家书工坊。");
+      setBookSourceMode("resonance");
       setConfirmedResonanceSourceMemoryIds([candidate.sourceMemoryId, candidate.targetMemoryId]);
       setToast("共鸣星轨已确认");
       return true;
@@ -2200,13 +2261,19 @@ export function GalaxyWorkspace({
               onOpenPanel={openPanel}
               onOpenPlanet={openSelectedPlanet}
               onSelectTheme={selectThemeFromNebula}
+              availableCuratedMemories={availableCuratedMemories}
+              curatedMemoryIds={curatedMemoryIds}
+              onCuratedMemoryIdsChange={updateCuratedMemoryIds}
+              onOpenCuratorDocument={openCuratorDocumentRecord}
+              onStartCuratedBinding={startCuratedBinding}
               onSelectPlanet={selectPlanet}
               onToast={setToast}
               planets={visiblePlanets}
               planetLinks={visibleLinks}
+              curatorTheme={curatorTheme}
               selectedPlanetId={selectedPlanetId}
               closingPlanetId={closingPlanetId}
-              selectedTheme={selectedTheme}
+              selectedTheme={bookTheme}
               selectedWorkshopBg={selectedWorkshopBg}
               selectedWorkshopMaterial={selectedWorkshopMaterial}
               selectedWorkshopZone={selectedWorkshopZone}
@@ -2233,13 +2300,11 @@ export function GalaxyWorkspace({
               bookSaveError={bookSaveError}
               bookShares={bookShares}
               bookTitleDraft={bookTitleDraft}
-              canCreateBook={
-                hasConfirmedResonance
-                && confirmedBookSources.length > 0
-                && confirmedBookSources.length === confirmedResonanceSourceMemoryIds?.length
-              }
+              bookWorkshopLockMessage={bookWorkshopLockMessage}
+              canCreateBook={canCreateBook}
               canOpenSavedBooks={canOpenSavedBooks}
-              confirmedBookSources={confirmedBookSources}
+              bookSources={bookSources}
+              bookSourceOrigin={usesCuratedBookSources ? "curated" : "resonance"}
               growingBooks={growingBooks}
               onCreateBook={generateLegacyBook}
               onCreateShare={createActiveBookShare}
@@ -2417,9 +2482,13 @@ function ZoneScene({
   bookSaveError,
   bookShares,
   bookTitleDraft,
+  bookWorkshopLockMessage,
+  availableCuratedMemories,
   canCreateBook,
   canOpenSavedBooks,
-  confirmedBookSources,
+  curatedMemoryIds,
+  bookSources,
+  bookSourceOrigin,
   growingBooks,
   resonanceCandidate,
   resonanceSourceMemory,
@@ -2439,10 +2508,14 @@ function ZoneScene({
   onOpenBookEditor,
   onReturnToBookShelf,
   onSelectTheme,
+  onCuratedMemoryIdsChange,
+  onOpenCuratorDocument,
+  onStartCuratedBinding,
   onSelectPlanet,
   onToast,
   planetLinks,
   planets,
+  curatorTheme,
   selectedPlanetId,
   selectedTheme,
   selectedWorkshopBg,
@@ -2483,9 +2556,13 @@ function ZoneScene({
   bookSaveError: string | null;
   bookShares: LegacyBookShare[];
   bookTitleDraft: string;
+  bookWorkshopLockMessage: string;
+  availableCuratedMemories: ConfirmedMemorySummary[];
   canCreateBook: boolean;
   canOpenSavedBooks: boolean;
-  confirmedBookSources: Array<{ id: string; title: string }>;
+  curatedMemoryIds: string[];
+  bookSources: Array<{ id: string; title: string }>;
+  bookSourceOrigin: "curated" | "resonance";
   growingBooks: GrowingBookSummary[];
   resonanceCandidate: LegacyPendingResonance | null;
   resonanceSourceMemory: MemoryStar | null;
@@ -2504,11 +2581,15 @@ function ZoneScene({
   onCloseBookEditor: () => void;
   onOpenBookEditor: () => void;
   onReturnToBookShelf: () => void;
-  onSelectTheme: (theme: string) => void;
+  onSelectTheme: (theme: ThemeNebulaKey) => void;
+  onCuratedMemoryIdsChange: (ids: string[]) => void;
+  onOpenCuratorDocument: () => void;
+  onStartCuratedBinding: () => void;
   onSelectPlanet: (planetId: string) => void;
   onToast: (message: string) => void;
   planetLinks: PlanetLink[];
   planets: Planet[];
+  curatorTheme: ThemeNebulaKey;
   selectedPlanetId: string | null;
   selectedTheme: string;
   selectedWorkshopBg: string;
@@ -2664,7 +2745,7 @@ function ZoneScene({
             暂无待确认的共鸣候选。请从一颗已确认的记忆星发起扫描。
           </div>
           <SceneHint
-            subtitle="AI 只会返回真实记忆之间的候选连接，是否形成星轨由家人决定"
+            subtitle="智能建议只会返回真实记忆之间的候选连接，是否形成星轨由家人决定"
             title="共鸣不是猜测，是等待确认的共同记忆"
           />
         </>
@@ -2727,7 +2808,7 @@ function ZoneScene({
           />
         ) : null}
         <SceneHint
-          subtitle="AI 只点亮候选连接，故事是否成立由家人确认"
+          subtitle="智能建议只点亮候选连接，故事是否成立由家人确认"
           title="两颗星球之间，不是合并，而是共鸣"
         />
       </>
@@ -2736,36 +2817,15 @@ function ZoneScene({
 
   if (activeZone === "themes") {
     return (
-      <div className="nebula-grid">
-        <ThemeNebula
-          description="第一次、成长里程碑、给未来的你。适合孩子星球与父母星系。"
-          label="亲子成长"
-          onSelect={onSelectTheme}
-          title="亲子成长星云"
-        />
-        <ThemeNebula
-          description="年轻时的 TA、成家、工作、没说出口的话。适合父母采访。"
-          label="父母人生"
-          onSelect={onSelectTheme}
-          title="父母人生星云"
-        />
-        <ThemeNebula
-          description="已故成员的生命周期、家人眼中的 TA、留下来的光。"
-          label="纪念星册"
-          onSelect={onSelectTheme}
-          title="纪念星云"
-        />
-        <ThemeNebula
-          description="一次旅行中，不同家人记住的风景、路线和心情。"
-          label="旅行星云"
-          onSelect={onSelectTheme}
-          title="旅行星云"
-        />
-        <SceneHint
-          subtitle="主题不是模板库，而是进入家书工坊之前的一片写作星云"
-          title="选择一种主题，就像进入一片新的星云"
-        />
-      </div>
+      <ThemeNebulaCurator
+        availableMemories={availableCuratedMemories}
+        onSelectTheme={onSelectTheme}
+        onSourceIdsChange={onCuratedMemoryIdsChange}
+        onStartBinding={onStartCuratedBinding}
+        onUploadDocument={onOpenCuratorDocument}
+        selectedMemoryIds={curatedMemoryIds}
+        selectedTheme={curatorTheme}
+      />
     );
   }
 
@@ -2799,12 +2859,12 @@ function ZoneScene({
                 <button aria-label="生成这本家书" className="book-cover-card book-cover-new" disabled={bookLoading} onClick={onCreateBook} type="button">
                   <span className="book-cover-plus" aria-hidden="true">+</span>
                   <strong>{bookLoading ? "正在装订家书…" : "生成一本家书"}</strong>
-                  <small>{confirmedBookSources.length} 段已确认共鸣记忆</small>
+                  <small>{bookSources.length} 段{bookSourceOrigin === "curated" ? "策展素材" : "已确认共鸣记忆"}</small>
                   <span className="book-cover-open">从当前主题开始</span>
                 </button>
               ) : null}
             </section>
-            {!canOpenSavedBooks && !canCreateBook ? <p className="book-market-empty">请先确认一条共鸣星轨，家书才会拥有真实的来源。</p> : null}
+            {!canOpenSavedBooks && !canCreateBook ? <p className="book-market-empty">{bookWorkshopLockMessage}</p> : null}
             {bookError ? <p role="alert">{bookError}</p> : null}
           </>
         ) : (
@@ -3189,29 +3249,6 @@ function ScopeRings() {
       <span className="scope-ring family-ring">家庭可见</span>
       <span className="scope-ring public-ring">公开分享轨道</span>
     </div>
-  );
-}
-
-function ThemeNebula({
-  description,
-  label,
-  onSelect,
-  title,
-}: {
-  description: string;
-  label: string;
-  onSelect: (theme: string) => void;
-  title: string;
-}) {
-  return (
-    <button aria-label={label} className="nebula" onClick={() => onSelect(label)} type="button">
-      <h3>{title}</h3>
-      <p>{description}</p>
-      <div className="tags">
-        <span className="tag">{label}</span>
-        <span className="tag">进入家书工坊</span>
-      </div>
-    </button>
   );
 }
 
@@ -3661,7 +3698,7 @@ function SidePanel({
                 <p>{safeMemorySummary(resonanceTargetMemory)}</p>
               </div>
             </div>
-            <h3>AI 给出的候选理由</h3>
+            <h3>智能建议给出的候选理由</h3>
             <div className="ai-card">
               <p>这是一条待确认的候选连接，不会在确认前进入家书工坊或画入家庭星图。</p>
             </div>
@@ -3791,14 +3828,14 @@ function SidePanel({
       {activePanel === "quickRecord" ? (
         <>
           <h2>点亮记忆星</h2>
-          <p>不用填完整表单。先留下一句话，AI 会整理为待确认记忆；只有你确认后才会进入轨道。</p>
+          <p>不用填完整表单。先留下一句话，智能整理会生成待确认记忆；只有你确认后才会进入轨道。</p>
           <p className="panel-readonly" aria-label="当前记忆目标">
             目标星球：{quickRecordTarget?.name ?? "未选择"}
           </p>
           {memoryReview ? (
             <>
               <div className="ai-card">
-                <strong>AI 整理结果，等待你的确认</strong>
+                <strong>智能整理结果，等待你的确认</strong>
                 <p>状态：{memoryReview.status}</p>
                 {memoryReview.uncertainFields?.length ? (
                   <p>待确认字段：{memoryReview.uncertainFields.join("、")}</p>
@@ -3855,7 +3892,7 @@ function SidePanel({
                 <label>
                   {quickRecordSource === "image" ? "上传图片" : quickRecordSource === "audio" ? "上传语音" : "上传文件"}
                   <input
-                    accept={quickRecordSource === "image" ? "image/*" : quickRecordSource === "audio" ? "audio/*" : ".pdf,.doc,.docx,.txt,.md"}
+                    accept={quickRecordSource === "image" ? "image/*" : quickRecordSource === "audio" ? "audio/*" : ".pdf,.docx,.txt,.md"}
                     aria-label={quickRecordSource === "image" ? "上传图片" : quickRecordSource === "audio" ? "上传语音" : "上传文件"}
                     className="panel-input"
                     onChange={(event) => onQuickRecordFileChange(event.target.files?.[0] ?? null)}
@@ -3864,19 +3901,22 @@ function SidePanel({
                   <span className="panel-readonly">
                     {quickRecordFile ? `已选择：${quickRecordFile.name}` : "原始来源只用于本次授权整理，不会自动点亮或分享。"}
                   </span>
+                  {quickRecordSource === "document" ? (
+                    <span className="panel-readonly">旧版 .doc 请先另存为 DOCX 或 PDF 后上传。</span>
+                  ) : null}
                 </label>
               )}
               <div className="ai-card">
                 <strong>整理预览</strong>
                 <p>
                   {quickRecordSource === "text"
-                    ? "AI 将尝试提取时间、地点、人物和事件；默认不公开，也不会自动确认或分享。"
-                    : "会先保存这份真实来源，再在你明确授权后交给 AI 整理；只有确认后才会进入星系轨道。"}
+                    ? "智能整理将尝试提取时间、地点、人物和事件；默认不公开，也不会自动确认或分享。"
+                    : "会先保存这份真实来源，再在你明确授权后交给智能整理；只有确认后才会进入星系轨道。"}
                 </p>
               </div>
               <div className="big-actions">
                 <button className="primary" disabled={loading} onClick={onLightMemory} type="button">
-                  {loading ? "AI 整理中…" : memoryPrimaryActionLabel}
+                  {loading ? "智能整理中…" : memoryPrimaryActionLabel}
                 </button>
               </div>
             </>
@@ -3885,7 +3925,7 @@ function SidePanel({
             <div className="ai-card" role="alert">
               <p>{memoryFlowError}</p>
               <button className="secondary" disabled={loading} onClick={onRetryMemoryExtraction} type="button">
-                重试 AI 整理
+                重试智能整理
               </button>
             </div>
           ) : null}
@@ -3934,7 +3974,7 @@ function ScopePanel({
         <div className="tags">
           <span className="tag private">仅自己可见</span>
         </div>
-        <p>适合个人日记、未整理的情绪、尚未确认的记忆。AI 整理与进入共鸣的授权都在记忆确认步骤逐条完成；私密原始素材始终不会被公开。</p>
+        <p>适合个人日记、未整理的情绪、尚未确认的记忆。智能整理与进入共鸣的授权都在记忆确认步骤逐条完成；私密原始素材始终不会被公开。</p>
         {visibilityControls}
       </>
     );

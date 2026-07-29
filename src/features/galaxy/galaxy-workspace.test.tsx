@@ -18,8 +18,8 @@ describe("GalaxyWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "进入我的星球漫游" }));
     fireEvent.click(screen.getByRole("button", { name: "设置权限" }));
 
-    expect(screen.getByText(/AI 整理与进入共鸣的授权都在记忆确认步骤逐条完成/)).toBeInTheDocument();
-    expect(screen.queryByText("允许 AI 整理")).not.toBeInTheDocument();
+    expect(screen.getByText(/智能整理与进入共鸣的授权都在记忆确认步骤逐条完成/)).toBeInTheDocument();
+    expect(screen.queryByText("允许智能整理")).not.toBeInTheDocument();
     expect(screen.queryByText("允许进入共鸣候选")).not.toBeInTheDocument();
     expect(screen.queryByText("公开原始素材")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "设为公开可见" })).toBeInTheDocument();
@@ -286,6 +286,199 @@ describe("GalaxyWorkspace", () => {
     expect(screen.queryByRole("heading", { name: "把写好的家书，摆回家人的星系" })).not.toBeInTheDocument();
     const startBinding = screen.getByRole("button", { name: `开始装订${theme}家书` });
     expect(startBinding).toBeDisabled();
+  });
+
+  it("opens the real book workshop after a curator source is selected for binding", () => {
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={[
+          {
+            id: "curated-memory-1", planetId: "mock-mom", title: "雨夜送学", occurredAt: "2012 年秋天",
+            location: "回家路上", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "雨衣和车灯照亮回家的路。", allowBook: true,
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+    fireEvent.click(screen.getByRole("button", { name: "父母人生" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "装订来源：雨夜送学" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始装订父母人生家书" }));
+
+    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-bookmaker");
+    expect(screen.getByRole("button", { name: "生成这本家书" })).toBeInTheDocument();
+  });
+
+  it("posts the selected parent-life curator source when generating a real book", async () => {
+    const generatedBook = {
+      id: "curated-book-1",
+      title: "雨夜送学家书",
+      status: "ready" as const,
+      draft: {
+        id: "curated-book-1",
+        title: "雨夜送学家书",
+        sourceMemoryIds: ["curated-memory-1"],
+        sourceRange: "family_galaxy" as const,
+        themeTemplateKey: "parent_life",
+        sourceLabels: { "curated-memory-1": "雨夜送学" },
+      },
+      body: "妈妈的雨衣和车灯照亮了回家的路。",
+      sections: [{ title: "雨夜", body: "妈妈的雨衣和车灯照亮了回家的路。", sourceMemoryIds: ["curated-memory-1"] }],
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/books" && init?.method === "POST") {
+        return new Response(JSON.stringify(generatedBook), { status: 201 });
+      }
+      if (url === `/api/books/${generatedBook.id}` && init?.method === "GET") {
+        return new Response(JSON.stringify({
+          id: generatedBook.id,
+          title: generatedBook.title,
+          intro: "",
+          body: generatedBook.body,
+          sections: generatedBook.sections,
+          sourceLabels: generatedBook.draft.sourceLabels,
+          status: "ready",
+          version: 1,
+          visibility: "family",
+        }), { status: 200 });
+      }
+      if (url === `/api/books/${generatedBook.id}/shares` && init?.method === "GET") {
+        return new Response(JSON.stringify({ shares: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `unexpected ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={[{
+          id: "curated-memory-1", planetId: "mock-mom", title: "雨夜送学", occurredAt: "2012 年秋天",
+          location: "回家路上", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "雨衣和车灯照亮回家的路。", allowBook: true,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+    fireEvent.click(screen.getByRole("button", { name: "父母人生" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "装订来源：雨夜送学" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始装订父母人生家书" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑此书" })).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith("/api/books", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        sourceMemoryIds: ["curated-memory-1"],
+        sourceRange: "family_galaxy",
+        themeTemplateKey: "parent_life",
+        visibility: "family",
+      }),
+    }));
+  });
+
+  it("opens the document recorder from the curator with its exact supported file types", () => {
+    renderDemoGalaxy();
+
+    fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+    fireEvent.click(screen.getByRole("button", { name: "父母人生" }));
+    fireEvent.click(screen.getByRole("button", { name: "上传一份家庭文档" }));
+
+    expect(screen.getByText("上传文件")).toBeInTheDocument();
+    expect(screen.getByLabelText("上传文件")).toHaveAttribute("accept", ".pdf,.docx,.txt,.md");
+    expect(screen.getByText("旧版 .doc 请先另存为 DOCX 或 PDF 后上传。")).toBeInTheDocument();
+  });
+
+  it("uses one canonical child-growth theme when opening the curator before selecting a theme card", async () => {
+    const generatedBook = {
+      id: "default-curator-book-1",
+      title: "默认亲子成长家书",
+      status: "ready" as const,
+      draft: {
+        id: "default-curator-book-1",
+        title: "默认亲子成长家书",
+        sourceMemoryIds: ["eligible-memory-1"],
+        sourceRange: "single_planet" as const,
+        themeTemplateKey: "child_growth",
+        sourceLabels: { "eligible-memory-1": "第一次学骑车" },
+      },
+      body: "第一次松开后座的手，孩子向前骑去。",
+      sections: [{ title: "第一次", body: "第一次松开后座的手，孩子向前骑去。", sourceMemoryIds: ["eligible-memory-1"] }],
+    };
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/books" && init?.method === "POST") {
+        return new Response(JSON.stringify(generatedBook), { status: 201 });
+      }
+      if (url === `/api/books/${generatedBook.id}` && init?.method === "GET") {
+        return new Response(JSON.stringify({
+          id: generatedBook.id,
+          title: generatedBook.title,
+          intro: "",
+          body: generatedBook.body,
+          sections: generatedBook.sections,
+          sourceLabels: generatedBook.draft.sourceLabels,
+          status: "ready",
+          version: 1,
+          visibility: "family",
+        }), { status: 200 });
+      }
+      if (url === `/api/books/${generatedBook.id}/shares` && init?.method === "GET") {
+        return new Response(JSON.stringify({ shares: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `unexpected ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={[{
+          id: "eligible-memory-1", planetId: "mock-mom", title: "第一次学骑车", occurredAt: "2012 年夏天",
+          location: "小区空地", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "妈妈松开了后座。", allowBook: true,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "装订来源：第一次学骑车" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始装订亲子成长家书" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑此书" })).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith("/api/books", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        sourceMemoryIds: ["eligible-memory-1"],
+        sourceRange: "single_planet",
+        themeTemplateKey: "child_growth",
+        visibility: "family",
+      }),
+    }));
+  });
+
+  it("excludes confirmed memories without book consent from curator sources and book creation", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={[{
+          id: "blocked-memory-1", planetId: "mock-mom", title: "未授权的日记", occurredAt: "2012 年夏天",
+          location: "家中", people: ["妈妈"], emotions: [], visibility: "family", summary: "仅供保存。", allowBook: false,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+
+    expect(screen.queryByRole("checkbox", { name: "装订来源：未授权的日记" })).not.toBeInTheDocument();
+    const startBinding = screen.getByRole("button", { name: "开始装订亲子成长家书" });
+    expect(startBinding).toBeDisabled();
+    fireEvent.click(startBinding);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("persists all selected planet settings from the server response and carries its version forward", async () => {
@@ -762,14 +955,15 @@ describe("GalaxyWorkspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
     expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes");
-    expect(screen.getByText("选择一种主题，就像进入一片新的星云")).toBeInTheDocument();
+    expect(screen.getByText("家庭叙事策展台")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "旅行星云" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "旅行星云" }));
     expect(screen.getByTestId("galaxy-app")).not.toHaveClass("scene-bookmaker");
-    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
+    expect(screen.getByText("已选择「旅行星云」主题，可继续挑选装订素材")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
     expect(screen.getByTestId("galaxy-app")).not.toHaveClass("scene-bookmaker");
+    expect(screen.getByText("请先确认一条共鸣星轨，再进入家书工坊。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "生成家书草稿" })).not.toBeInTheDocument();
   });
 

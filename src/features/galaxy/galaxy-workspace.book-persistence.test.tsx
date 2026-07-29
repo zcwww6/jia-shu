@@ -52,11 +52,11 @@ function deferred<T>() {
 const confirmedMemories = [
   {
     id: "memory-a", planetId: "mock-mom", title: "妈妈的真实除夕", occurredAt: "2018 年除夕",
-    location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family" as const, summary: "真实来源一。",
+    location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family" as const, summary: "真实来源一。", allowBook: true,
   },
   {
     id: "memory-b", planetId: "mock-me", title: "我的真实除夕", occurredAt: "2018 年除夕",
-    location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "private" as const, summary: "真实来源二。",
+    location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "private" as const, summary: "真实来源二。", allowBook: true,
   },
 ];
 
@@ -175,6 +175,84 @@ describe("GalaxyWorkspace persisted book flow", () => {
       `/api/resonances/${confirmedResonance.id}/confirm`,
       expect.anything(),
     );
+  });
+
+  it("withholds book generation when any confirmed resonance source lacks book consent", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={[
+          confirmedMemories[0]!,
+          { ...confirmedMemories[1]!, allowBook: false },
+        ]}
+        initialConfirmedResonances={[confirmedResonance]}
+        initialGrowingBooks={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "家书工坊" }));
+
+    expect(screen.queryByRole("button", { name: "生成这本家书" })).not.toBeInTheDocument();
+    expect(screen.getByText("这条共鸣星轨的所有来源均需授权家书后才能生成。")).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/books", expect.anything());
+  });
+
+  it("returns a newly confirmed resonance to the binary-system book source after curator selection", async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === `/api/resonances/${confirmedResonance.id}/confirm`) {
+        return new Response(JSON.stringify({ ...confirmedResonance, status: "confirmed" }), { status: 200 });
+      }
+      if (url === "/api/books" && init?.method === "POST") {
+        return new Response(JSON.stringify(generatedBook), { status: 201 });
+      }
+      if (url === `/api/books/${generatedBook.id}` && init?.method === "GET") {
+        return new Response(JSON.stringify({
+          id: generatedBook.id,
+          title: generatedBook.title,
+          intro: "",
+          body: generatedBook.body,
+          sections: generatedBook.sections,
+          sourceLabels: generatedBook.draft.sourceLabels,
+          status: "ready",
+          version: 1,
+          visibility: "family",
+        }), { status: 200 });
+      }
+      if (url === `/api/books/${generatedBook.id}/shares` && init?.method === "GET") {
+        return new Response(JSON.stringify({ shares: [] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ message: `unexpected ${url}` }), { status: 500 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <GalaxyWorkspace
+        initialPlanets={planets}
+        initialLinks={planetLinks}
+        initialConfirmedMemories={confirmedMemories}
+        initialPendingResonances={[confirmedResonance]}
+        initialGrowingBooks={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+    fireEvent.click(screen.getByRole("button", { name: "父母人生" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "装订来源：妈妈的真实除夕" }));
+    await enterConfirmedBookWorkshop();
+    fireEvent.click(screen.getByRole("button", { name: "生成这本家书" }));
+
+    await waitForBookBody(generatedBook.body);
+    expect(fetchMock).toHaveBeenCalledWith("/api/books", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        sourceMemoryIds: ["memory-a", "memory-b"],
+        sourceRange: "binary_system",
+        themeTemplateKey: "parent_life",
+        visibility: "family",
+      }),
+    }));
   });
 
   it("opens a refreshed server book summary through GET without requiring a session resonance", async () => {
