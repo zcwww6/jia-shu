@@ -6,8 +6,8 @@ import { extractDocumentText } from "./document-text";
 
 const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME_TYPE = "application/pdf";
-const SUPPORTED_MIME_TYPES = new Set(["text/plain", "text/markdown", DOCX_MIME_TYPE, PDF_MIME_TYPE, "image/jpeg", "image/png", "image/webp", "audio/mpeg", "audio/x-m4a", "audio/wav"]);
-const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const SUPPORTED_MIME_TYPES = new Set(["text/plain", "text/markdown", DOCX_MIME_TYPE, PDF_MIME_TYPE, "image/jpeg", "image/png", "image/webp", "image/avif", "audio/mpeg", "audio/x-m4a", "audio/wav"]);
+const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 const AUDIO_MIME_TYPES = new Set(["audio/mpeg", "audio/x-m4a", "audio/wav"]);
 const DOCUMENT_MIME_TYPES = new Set(["text/plain", "text/markdown", DOCX_MIME_TYPE, PDF_MIME_TYPE]);
 const TEXT_DOCUMENT_EXTENSIONS = new Map([

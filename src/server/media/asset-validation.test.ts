@@ -652,4 +652,26 @@ describe("asset validation", () => {
 
     expect(result).toMatchObject({ kind: "planet_cover", trustedMime: "image/jpeg" });
   });
+
+  it("accepts a verified AVIF image as a planet cover", async () => {
+    const result = await validateAsset({
+      declaredMime: "image/avif",
+      bytes: new Uint8Array([1, 2, 3]),
+      originalName: "family-cover.avif",
+      kind: "planet_cover",
+      adapters: {
+        detect: async () => ({ mime: "image/avif", ext: "avif" }),
+        image: {
+          inspect: async () => ({ width: 10, height: 10 }),
+          derive: async () => ({ normalizedBytes: new Uint8Array([4]), thumbnailBytes: new Uint8Array([5]) }),
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      extension: "avif",
+      kind: "planet_cover",
+      trustedMime: "image/avif",
+    });
+  });
 });

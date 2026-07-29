@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useRef, type CSSProperties } from "react";
 import { ImagePlus, Orbit, Sparkles } from "lucide-react";
 
 import type { GalaxyZoneKey, Planet } from "@/shared/types/galaxy";
@@ -50,6 +50,7 @@ export function PlanetThemeStudio({
   selectedTheme: string;
   selectedZone: GalaxyZoneKey;
 }) {
+  const coverUploadInputRef = useRef<HTMLInputElement>(null);
   const activeTheme = resolvePlanetTheme(selectedTheme);
   const hasUnsavedPreview = Boolean(
     selectedPlanet && (previewCoverUrl || selectedPlanet.theme !== selectedTheme),
@@ -163,20 +164,27 @@ export function PlanetThemeStudio({
 
         {selectedPlanet ? (
           <div className="workshop-photo-controls">
-            <label className="workshop-upload-trigger" htmlFor="planet-cover-upload">
+            <button
+              aria-label={selectedCoverFile ? "重新选择星球照片" : selectedPlanet.coverAssetId ? "更换星球照片" : "给星球贴一张照片"}
+              className="workshop-upload-trigger"
+              onClick={() => coverUploadInputRef.current?.click()}
+              type="button"
+            >
               <ImagePlus size={18} />
               <span>
                 <strong>{selectedCoverFile ? "已贴上新照片" : selectedPlanet.coverAssetId ? "更换星球照片" : "给星球贴一张照片"}</strong>
                 <small>{selectedCoverFile ? selectedCoverFile.name : "JPG、PNG、WebP 或 AVIF；仅在保存后上传"}</small>
               </span>
-              <input
-                accept="image/jpeg,image/png,image/webp,image/avif"
-                aria-label="上传星球封面"
-                id="planet-cover-upload"
-                onChange={(event) => onSelectCover(event.target.files?.[0] ?? null)}
-                type="file"
-              />
-            </label>
+            </button>
+            <input
+              accept="image/jpeg,image/png,image/webp,image/avif"
+              aria-label="上传星球封面"
+              className="workshop-upload-input"
+              onChange={(event) => onSelectCover(event.target.files?.[0] ?? null)}
+              ref={coverUploadInputRef}
+              tabIndex={-1}
+              type="file"
+            />
             <button className="secondary workshop-save-cover" disabled={!selectedCoverFile || coverSaving} onClick={onSaveCover} type="button">
               {coverSaving ? "正在私密保存…" : "保存星球封面"}
             </button>
