@@ -264,7 +264,12 @@ describe("GalaxyWorkspace", () => {
     });
   });
 
-  it("opens the book workshop with the selected nebula theme when saved books are available", () => {
+  it.each([
+    ["亲子成长", "亲子成长星云"],
+    ["父母人生", "父母人生星云"],
+    ["纪念星册", "纪念星云"],
+    ["旅行星云", "旅行星云"],
+  ])("keeps %s inside its curator instead of entering the book workshop", (theme, heading) => {
     render(
       <GalaxyWorkspace
         initialPlanets={planets}
@@ -274,11 +279,13 @@ describe("GalaxyWorkspace", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
-    fireEvent.click(screen.getByRole("button", { name: "纪念星册" }));
+    fireEvent.click(screen.getByRole("button", { name: theme }));
 
-    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-bookmaker");
-    expect(screen.getByRole("heading", { name: "把写好的家书，摆回家人的星系" })).toBeInTheDocument();
-    expect(screen.getByText(/当前主题为「纪念星册」/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes");
+    expect(screen.queryByRole("heading", { name: "把写好的家书，摆回家人的星系" })).not.toBeInTheDocument();
+    const startBinding = screen.getByRole("button", { name: `开始装订${theme}家书` });
+    expect(startBinding).toBeDisabled();
   });
 
   it("persists all selected planet settings from the server response and carries its version forward", async () => {

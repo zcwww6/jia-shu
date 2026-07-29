@@ -44,10 +44,10 @@ describe("FamilyBookReader", () => {
     expect(screen.getByRole("heading", { name: "灯火一直在" })).toBeInTheDocument();
     expect(screen.getByLabelText("家书纪念册预览")).toBeInTheDocument();
     expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "0");
-    expect(screen.getByRole("button", { name: "上一组双页" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "下一组双页" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeEnabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "下一组双页" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
 
     await waitFor(() => expect(screen.getByTestId("visible-family-book-spread")).toHaveAttribute("data-spread-index", "1"));
     const visibleSpread = screen.getByTestId("visible-family-book-spread");

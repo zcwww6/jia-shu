@@ -88,16 +88,13 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "确认点亮记忆星" }));
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "除夕合照" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes"));
+    await waitFor(() => expect(screen.getByText("已加入当前主题的装订清单")).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/memories/memory-1/confirm",
       expect.objectContaining({ headers: expect.objectContaining({ "If-Match-Version": "3" }) }),
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "除夕合照" }));
-    expect(screen.getByRole("heading", { name: "除夕合照" })).toBeInTheDocument();
-    expect(screen.getByText("全家团圆")).toBeInTheDocument();
-    expect(screen.queryByText("那年第一次在新房里过年。妈妈忙了一整天，最后在客厅拍了一张合照。")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "装订来源：除夕合照" })).toBeChecked();
   });
 
   it("uploads one voice source before creating its real AI memory draft", async () => {
@@ -138,6 +135,15 @@ describe("GalaxyWorkspace persisted text-memory flow", () => {
     }));
     expect(screen.queryByRole("button", { name: "新点亮：语音整理结果" })).not.toBeInTheDocument();
     expect(window.localStorage.getItem("jiashu-galaxy-lit-memories")).toBeNull();
+  });
+
+  it("limits the document picker to formats supported by intelligent document sorting", () => {
+    render(<GalaxyWorkspace initialPlanets={persistedPlanets} initialLinks={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "进入妈妈漫游" }));
+    fireEvent.click(screen.getByRole("button", { name: "点亮记忆" }));
+    fireEvent.change(screen.getByLabelText("选择记忆来源"), { target: { value: "document" } });
+
+    expect(screen.getByLabelText("上传文件")).toHaveAttribute("accept", ".pdf,.docx,.txt,.md");
   });
 
   it("keeps a selected document available for a safe upload retry before one real draft is created", async () => {

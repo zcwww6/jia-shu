@@ -28,13 +28,24 @@
 - Modify: \`src/features/galaxy/legacy-memory-flow.test.tsx\`
 - Modify: \`src/features/books/family-book-reader.test.tsx\`
 
-- [ ] **Step 1: Write the theme no-auto-navigation test**
+- [ ] **Step 1: Write the four-theme data-driven no-auto-navigation test**
 
 ~~~tsx
-fireEvent.click(screen.getByRole("button", { name: "亲子成长" }));
-expect(screen.getByRole("heading", { name: "亲子成长星云" })).toBeInTheDocument();
-expect(screen.queryByRole("heading", { name: /把写好的家书/ })).not.toBeInTheDocument();
-expect(screen.getByRole("button", { name: "开始装订亲子成长家书" })).toBeEnabled();
+it.each([
+  ["亲子成长", "亲子成长星云"],
+  ["父母人生", "父母人生星云"],
+  ["纪念星册", "纪念星云"],
+  ["旅行星云", "旅行星云"],
+])("keeps %s inside its curator", (theme, heading) => {
+  render(<GalaxyWorkspace initialPlanets={planets} initialLinks={planetLinks} />);
+  fireEvent.click(screen.getByRole("button", { name: "主题星云" }));
+  fireEvent.click(screen.getByRole("button", { name: theme }));
+  expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+  expect(screen.getByTestId("galaxy-app")).toHaveClass("scene-themes");
+  expect(screen.queryByRole("heading", { name: /把写好的家书/ })).not.toBeInTheDocument();
+  const startBinding = screen.getByRole("button", { name: `开始装订${theme}家书` });
+  expect(startBinding).toBeDisabled();
+});
 ~~~
 
 - [ ] **Step 2: Lock the document type and confirmation return**
@@ -115,6 +126,7 @@ fireEvent.click(screen.getByRole("button", { name: "父母人生" }));
 expect(screen.getByText("年轻时的 TA、成家、工作、没说出口的话。")).toBeVisible();
 fireEvent.click(screen.getByRole("checkbox", { name: "装订来源：雨夜送学" }));
 expect(onSourceIdsChange).toHaveBeenLastCalledWith(["memory-1"]);
+expect(screen.getByRole("button", { name: "开始装订父母人生家书" })).toBeEnabled();
 ~~~
 
 - [ ] **Step 4: Add spatial, responsive and reduced-motion styles**
