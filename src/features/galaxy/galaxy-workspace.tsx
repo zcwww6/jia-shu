@@ -3592,7 +3592,7 @@ function SidePanel({
   onDecideResonance: (status: "confirmed" | "rejected") => Promise<boolean>;
   onPersistPlanetChange: (planet: Planet, changes: LegacyPlanetChanges) => Promise<boolean>;
   onOpenPanel: (key: PanelKey) => void;
-  onSelectTheme: (theme: string) => void;
+  onSelectTheme: (theme: ThemeNebulaKey) => void;
   selectedPlanet: Planet | null;
 }) {
   if (!activePanel) return null;

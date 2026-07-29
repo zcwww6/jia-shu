@@ -133,11 +133,11 @@ describe("GalaxyWorkspace book entry guard", () => {
         initialConfirmedMemories={[
           {
             id: "memory-1", planetId: "mock-mom", title: "妈妈的真实除夕", occurredAt: "2018 年除夕",
-            location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "真实来源一。",
+            location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "family", summary: "真实来源一。", allowBook: true,
           },
           {
             id: "memory-2", planetId: "mock-me", title: "我的真实除夕", occurredAt: "2018 年除夕",
-            location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "private", summary: "真实来源二。",
+            location: "新房", people: ["妈妈", "我"], emotions: [], visibility: "private", summary: "真实来源二。", allowBook: true,
           },
         ]}
         initialPendingResonances={[
