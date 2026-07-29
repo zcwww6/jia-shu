@@ -14,6 +14,8 @@ describe("legacy family demo data seed", () => {
     const script = await readFile(resolve(process.cwd(), "scripts/seed-legacy-demo-data.ts"), "utf8");
 
     expect(script).toContain("--dry-run");
+    expect(script).toContain("写入演示数据必须同时提供 --user-id 与 --galaxy-id");
+    expect(script).toContain("assertExplicitWriteScope(options)");
     expect(script).toContain("ON CONFLICT DO NOTHING");
     expect(script).toContain("BEGIN;");
     expect(script).toContain("COMMIT;");

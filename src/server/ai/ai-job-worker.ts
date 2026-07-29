@@ -88,21 +88,21 @@ function defaultInterval(callback: () => void, delayMs: number) {
 function safeFailure(error: unknown) {
   if (error instanceof DomainError) {
     if (error.code === "AI_NOT_CONFIGURED") {
-      return { errorCode: "AI_NOT_CONFIGURED", errorSummary: "AI 功能尚未配置。" };
+      return { errorCode: "AI_NOT_CONFIGURED", errorSummary: "智能整理尚未配置。" };
     }
 
     if (error.code === "AI_PROVIDER_UNAVAILABLE") {
-      return { errorCode: "AI_PROVIDER_UNAVAILABLE", errorSummary: "AI 服务暂不可用，请稍后重试。" };
+      return { errorCode: "AI_PROVIDER_UNAVAILABLE", errorSummary: "智能整理暂不可用，请稍后重试。" };
     }
 
     if (error.code === "AI_PROVIDER_RESPONSE_INVALID") {
-      return { errorCode: "AI_PROVIDER_RESPONSE_INVALID", errorSummary: "AI 服务返回内容无法处理，请稍后重试。" };
+      return { errorCode: "AI_PROVIDER_RESPONSE_INVALID", errorSummary: "智能整理返回内容无法处理，请稍后重试。" };
     }
 
     if (error.code === "AI_CONSENT_STALE") {
       return {
         errorCode: "AI_CONSENT_STALE",
-        errorSummary: "记忆内容已变化，请重新确认后发起 AI 整理。",
+        errorSummary: "记忆内容已变化，请重新确认后发起智能整理。",
         forceTerminal: true,
       };
     }

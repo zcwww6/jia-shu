@@ -63,7 +63,7 @@ export async function processTextExtractionAiJob(job: TextExtractionJob): Promis
   await assertCurrentTextExtractionLease(job);
 
   if (memory.status !== "draft" && memory.status !== "processing") {
-    throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起 AI 整理。");
+    throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起智能整理。");
   }
 
   const currentRequestHash = textExtractionRequestHash({
@@ -74,7 +74,7 @@ export async function processTextExtractionAiJob(job: TextExtractionJob): Promis
   });
 
   if (currentRequestHash !== job.requestHash) {
-    throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起 AI 整理。");
+    throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起智能整理。");
   }
 
   if (memory.status === "draft") {
@@ -86,7 +86,7 @@ export async function processTextExtractionAiJob(job: TextExtractionJob): Promis
     });
 
     if (!handedOff) {
-      throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起 AI 整理。");
+      throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起智能整理。");
     }
   }
 
@@ -458,7 +458,7 @@ async function assertCurrentMemoryAiLease(job: MemoryAiJob): Promise<void> {
 }
 
 function staleConsent() {
-  return new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起 AI 整理。");
+  return new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起智能整理。");
 }
 
 async function assertCurrentTextExtractionLease(job: TextExtractionJob): Promise<void> {
@@ -474,7 +474,7 @@ async function assertCurrentTextExtractionLease(job: TextExtractionJob): Promise
   const activeJob = activeJobs[0];
 
   if (activeJobs.length !== 1 || activeJob?.id !== job.id) {
-    throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起 AI 整理。");
+    throw new DomainError("AI_CONSENT_STALE", 409, "记忆内容已变化，请重新确认后发起智能整理。");
   }
 
   if (

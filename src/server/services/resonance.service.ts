@@ -425,7 +425,7 @@ function validReason(value: string) {
   const reason = value.trim();
 
   if (!reason || reason.length > 2_000) {
-    throw new DomainError("AI_PROVIDER_RESPONSE_INVALID", 502, "AI 服务返回内容无法处理，请稍后重试。");
+    throw new DomainError("AI_PROVIDER_RESPONSE_INVALID", 502, "智能整理返回内容无法处理，请稍后重试。");
   }
 
   return reason;

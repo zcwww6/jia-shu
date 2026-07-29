@@ -2,17 +2,41 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 const { resolvePersonalGalaxyScope } = vi.hoisted(() => ({ resolvePersonalGalaxyScope: vi.fn() }));
-const { findActiveBook, findActiveBookWithMedia } = vi.hoisted(() => ({
+const { findActiveBook, findActiveBookWithMedia, updateActiveBook } = vi.hoisted(() => ({
   findActiveBook: vi.fn(),
   findActiveBookWithMedia: vi.fn(),
+  updateActiveBook: vi.fn(),
 }));
 vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/server/db/galaxy-repo", () => ({ resolvePersonalGalaxyScope }));
-vi.mock("@/server/db/book-repo", () => ({ findActiveBook, findActiveBookWithMedia }));
-import { GET } from "./route";
+vi.mock("@/server/db/book-repo", () => ({ findActiveBook, findActiveBookWithMedia, updateActiveBook }));
+import { GET, PATCH } from "./route";
 
 describe("GET /api/books/[bookId]", () => {
-  beforeEach(() => { auth.mockReset(); resolvePersonalGalaxyScope.mockReset(); findActiveBook.mockReset(); findActiveBookWithMedia.mockReset(); });
+  beforeEach(() => { auth.mockReset(); resolvePersonalGalaxyScope.mockReset(); findActiveBook.mockReset(); findActiveBookWithMedia.mockReset(); updateActiveBook.mockReset(); });
+
+  it("returns the draft review state after an approved book's visible content changes", async () => {
+    auth.mockResolvedValue({ user: { id: "user-1" } });
+    resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
+    updateActiveBook.mockResolvedValue({
+      id: "book-1", title: "新标题", body: "新正文", version: 5, status: "draft",
+      draft: { reviewedSpreadIndexes: [] }, sections: [{ title: "第一章" }],
+    });
+
+    const response = await PATCH(new Request("http://localhost/api/books/book-1", {
+      method: "PATCH",
+      body: JSON.stringify({ version: 4, title: "新标题", body: "新正文" }),
+    }), { params: Promise.resolve({ bookId: "book-1" }) });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      id: "book-1", title: "新标题", body: "新正文", version: 5,
+      status: "draft", reviewedSpreadIndexes: [], spreadCount: 3,
+    });
+    expect(updateActiveBook).toHaveBeenCalledWith({
+      userId: "user-1", galaxyId: "galaxy-1", bookId: "book-1", version: 4, title: "新标题", body: "新正文",
+    });
+  });
   it("returns a scoped saved book without exposing unrelated records", async () => {
     auth.mockResolvedValue({ user: { id: "user-1" } }); resolvePersonalGalaxyScope.mockResolvedValue({ userId: "user-1", galaxyId: "galaxy-1" });
     findActiveBookWithMedia.mockResolvedValue({
@@ -29,7 +53,7 @@ describe("GET /api/books/[bookId]", () => {
       },
     });
     const response = await GET(new Request("http://localhost/api/books/book-1"), { params: Promise.resolve({ bookId: "book-1" }) });
-    expect(response.status).toBe(200); await expect(response.json()).resolves.toEqual({ id: "book-1", title: "团圆", body: "正文", intro: "这是一封已经保存的家书前言。", sections: [], status: "ready", version: 2, visibility: "family", sourceLabels: { "memory-1": "妈妈的除夕回忆" }, media: [] });
+    expect(response.status).toBe(200); await expect(response.json()).resolves.toEqual({ id: "book-1", title: "团圆", body: "正文", intro: "这是一封已经保存的家书前言。", sections: [], status: "ready", version: 2, visibility: "family", sourceLabels: { "memory-1": "妈妈的除夕回忆" }, reviewedSpreadIndexes: [], spreadCount: 2, media: [] });
     expect(findActiveBookWithMedia).toHaveBeenCalledWith({ userId: "user-1", galaxyId: "galaxy-1", bookId: "book-1" });
   });
 

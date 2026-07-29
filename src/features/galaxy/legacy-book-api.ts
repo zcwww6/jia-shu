@@ -19,7 +19,7 @@ export type LegacyBookDraft = {
 export type LegacyCreatedBook = {
   id: string;
   title: string;
-  status: "ready";
+  status: "draft";
   draft: LegacyBookDraft;
   body: string;
   sections: LegacyBookSection[];
@@ -36,6 +36,8 @@ export type LegacyBookDetail = {
   status: "draft" | "ready" | "published" | "archived";
   version: number;
   visibility: LegacyBookVisibility;
+  reviewedSpreadIndexes: number[];
+  spreadCount: number;
 };
 
 export type LegacyBookCreateInput = {
@@ -52,7 +54,9 @@ export type LegacyBookUpdateInput = {
   body?: string;
 };
 
-export type LegacyBookUpdateResponse = Pick<LegacyBookDetail, "id" | "title" | "body" | "version">;
+export type LegacyBookUpdateResponse = Pick<LegacyBookDetail, "id" | "title" | "body" | "version" | "status" | "reviewedSpreadIndexes" | "spreadCount">;
+export type LegacyBookReviewInput = { pageIndex: number; version: number };
+export type LegacyBookReviewResponse = Pick<LegacyBookDetail, "id" | "status" | "version" | "reviewedSpreadIndexes" | "spreadCount">;
 
 export type LegacyBookShareOptions = {
   showBody: boolean;
@@ -111,7 +115,19 @@ function parseLegacyBookDetail(book: LegacyBookDetail): LegacyBookDetail {
     intro: typeof book.intro === "string" ? book.intro.trim() : "",
     sourceLabels: readSourceLabels(book.sourceLabels),
     media: readBookMedia(book.media),
+    reviewedSpreadIndexes: readReviewedSpreadIndexes(book.reviewedSpreadIndexes),
+    spreadCount: readSpreadCount(book.spreadCount, book.sections),
   };
+}
+
+function readReviewedSpreadIndexes(value: unknown) {
+  if (!Array.isArray(value) || !value.every((index) => typeof index === "number" && Number.isInteger(index) && index >= 0)) return [];
+  return value;
+}
+
+function readSpreadCount(value: unknown, sections: unknown) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 2) return value;
+  return Array.isArray(sections) ? sections.length + 2 : 2;
 }
 
 function readBookMedia(value: unknown): FamilyBookMedia[] {
@@ -169,6 +185,14 @@ export function getLegacyBook(bookId: string) {
 export function updateLegacyBook(bookId: string, input: LegacyBookUpdateInput) {
   return requestJson<LegacyBookUpdateResponse>(`/api/books/${bookId}`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export function reviewLegacyBookSpread(bookId: string, input: LegacyBookReviewInput) {
+  return requestJson<LegacyBookReviewResponse>(`/api/books/${bookId}/review`, {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });

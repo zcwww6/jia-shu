@@ -90,13 +90,13 @@ export async function createMemoryAiJob(
       }
 
       if (initialMemory.status !== "draft") {
-        throw new DomainError("MEMORY_DRAFT_NOT_EDITABLE", 409, "只有草稿状态的记忆可以由 AI 整理。");
+        throw new DomainError("MEMORY_DRAFT_NOT_EDITABLE", 409, "只有草稿状态的记忆可以使用智能整理。");
       }
 
       const lockedMemories = await lockActiveDraftMemoryForAiJob({ ...scope, memoryId }, transaction);
 
       if (lockedMemories.length !== 1) {
-        throw new DomainError("MEMORY_DRAFT_NOT_EDITABLE", 409, "只有草稿状态的记忆可以由 AI 整理。");
+        throw new DomainError("MEMORY_DRAFT_NOT_EDITABLE", 409, "只有草稿状态的记忆可以使用智能整理。");
       }
 
       const memory = lockedMemories[0];

@@ -152,6 +152,7 @@ async function main() {
     return;
   }
 
+  assertExplicitWriteScope(options);
   const target = await readDatabaseTarget(options.container);
   const scope = chooseScope(await listGalaxyScopes(target), options);
   const dataset = await createDemoDataset(scope);
@@ -200,7 +201,7 @@ function readOptions(args: string[]): Options {
     }
 
     if (value === "--help" || value === "-h") {
-      console.log("用法：npx tsx scripts/seed-legacy-demo-data.ts [--user-id <id>] [--galaxy-id <id>] [--container <postgres-name>] [--app-container <app-name>] [--base-url <url>] [--dry-run]");
+      console.log("用法：npx tsx scripts/seed-legacy-demo-data.ts --user-id <id> --galaxy-id <id> [--container <postgres-name>] [--app-container <app-name>] [--base-url <url>]；仅查看计划可使用 --dry-run。 ");
       process.exit(0);
     }
 
@@ -217,6 +218,12 @@ async function readDatabaseTarget(container: string): Promise<DatabaseTarget> {
 
   if (!user || !database) throw new Error(`容器 ${container} 未提供 POSTGRES_USER 或 POSTGRES_DB。`);
   return { container, user, database };
+}
+
+function assertExplicitWriteScope(options: Options) {
+  if (!options.userId || !options.galaxyId) {
+    throw new Error("写入演示数据必须同时提供 --user-id 与 --galaxy-id；不指定范围时请使用 --dry-run。 ");
+  }
 }
 
 async function readMediaTarget(options: Options, databaseContainer: string): Promise<MediaTarget> {
@@ -299,12 +306,8 @@ function chooseScope(scopes: GalaxyScope[], options: Options): GalaxyScope {
     && (!options.galaxyId || scope.galaxyId === options.galaxyId),
   );
 
-  if (matches.length === 0) {
-    throw new Error("没有找到目标星系；请通过 --user-id 或 --galaxy-id 指定一个已有账号。 ");
-  }
-
-  if (matches.length > 1 && (options.userId || options.galaxyId)) {
-    throw new Error("目标账号对应多个星系；请同时提供 --user-id 与 --galaxy-id。 ");
+  if (matches.length !== 1) {
+    throw new Error("没有找到唯一目标星系；请检查 --user-id 与 --galaxy-id 是否匹配。 ");
   }
 
   return matches[0];

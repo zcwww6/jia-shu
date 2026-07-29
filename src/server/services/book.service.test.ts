@@ -293,7 +293,7 @@ describe("book service", () => {
       response: expect.objectContaining({
         id: "book-1",
         title: "除夕的团圆饭",
-        status: "ready",
+        status: "draft",
         body: "这一年的团圆，从一桌热饭开始。\n\n围桌\n一家人在灯下慢慢说话。",
         sections: [{
           title: "围桌",
@@ -316,7 +316,7 @@ describe("book service", () => {
       kind: "completed",
       operationId: "operation-1",
       status: 201,
-      response: expect.objectContaining({ id: "book-1", status: "ready" }),
+      response: expect.objectContaining({ id: "book-1", status: "draft" }),
     }));
   });
 

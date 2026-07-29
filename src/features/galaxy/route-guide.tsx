@@ -12,7 +12,7 @@ const steps = [
   },
   {
     label: "点亮记忆星",
-    detail: "先留下一句话，AI 再整理为结构化记忆",
+    detail: "先留下一句话，再由智能整理为结构化记忆",
     href: "/memory/new",
   },
   {

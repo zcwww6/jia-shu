@@ -30,7 +30,7 @@ describe("memory AI capability preflight", () => {
 
   it("fails closed before enqueueing an image pipeline without a vision model", () => {
     expect(() => assertMemoryAiCapabilitiesConfigured({ sourceKind: "image" }))
-      .toThrow(expect.objectContaining({ code: "AI_NOT_CONFIGURED", status: 503 }));
+      .toThrow(expect.objectContaining({ code: "AI_NOT_CONFIGURED", status: 503, message: "智能整理尚未配置。" }));
   });
 
   it("allows an audio pipeline to use the configured text model when no transcription endpoint model exists", () => {

@@ -103,9 +103,32 @@ export async function findActiveBookWithMedia(input: {
 }
 
 export async function updateActiveBook(input: { userId: string; galaxyId: string; bookId: string; version: number; body?: string; title?: string | null }) {
-  const result = await getPrismaClient().book.updateMany({ where: { id: input.bookId, userId: input.userId, galaxyId: input.galaxyId, deletedAt: null, version: input.version }, data: { ...(input.body !== undefined ? { body: input.body } : {}), ...(input.title !== undefined ? { title: input.title } : {}), version: { increment: 1 } } });
+  const prisma = getPrismaClient();
+  const current = await prisma.book.findFirst({
+    where: { id: input.bookId, userId: input.userId, galaxyId: input.galaxyId, deletedAt: null },
+  });
+  if (!current || current.version !== input.version) {
+    throw new DomainError("VERSION_CONFLICT", 409, "家书已被更新，请刷新后再保存。");
+  }
+
+  const contentChanged = (input.body !== undefined && input.body !== current.body)
+    || (input.title !== undefined && input.title !== current.title);
+  const result = await prisma.book.updateMany({
+    where: { id: input.bookId, userId: input.userId, galaxyId: input.galaxyId, deletedAt: null, version: input.version },
+    data: {
+      ...(input.body !== undefined ? { body: input.body } : {}),
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(contentChanged ? { status: "draft" as const, draft: resetBookReviewProgress(current.draft) } : {}),
+      version: { increment: 1 },
+    },
+  });
   if (result.count !== 1) throw new DomainError("VERSION_CONFLICT", 409, "家书已被更新，请刷新后再保存。");
   return findActiveBook(input);
+}
+
+function resetBookReviewProgress(value: Prisma.JsonValue): Prisma.InputJsonValue {
+  const draft = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return { ...draft, reviewedSpreadIndexes: [] } as Prisma.InputJsonObject;
 }
 
 export async function listBookSummaries(input: { userId: string; galaxyId: string }) {
@@ -201,7 +224,7 @@ export async function createGeneratedBook(
       sourceRange: input.sourceRange,
       themeTemplateKey: input.themeTemplateKey,
       visibility: input.visibility,
-      status: "ready",
+      status: "draft",
       draft: input.draft,
       body: input.body,
       sections: input.sections,
@@ -212,6 +235,41 @@ export async function createGeneratedBook(
         })),
       },
     },
+  });
+}
+
+export async function findReviewableBook(input: { userId: string; galaxyId: string; bookId: string }) {
+  return getPrismaClient().book.findFirst({
+    where: { id: input.bookId, userId: input.userId, galaxyId: input.galaxyId, deletedAt: null },
+    select: { id: true, status: true, version: true, draft: true, sections: true },
+  });
+}
+
+export async function updateBookReview(input: {
+  userId: string;
+  galaxyId: string;
+  bookId: string;
+  version: number;
+  status: "draft" | "ready";
+  draft: Prisma.InputJsonValue;
+}) {
+  const prisma = getPrismaClient();
+  const result = await prisma.book.updateMany({
+    where: {
+      id: input.bookId,
+      userId: input.userId,
+      galaxyId: input.galaxyId,
+      deletedAt: null,
+      status: "draft",
+      version: input.version,
+    },
+    data: { status: input.status, draft: input.draft, version: { increment: 1 } },
+  });
+
+  if (result.count !== 1) return null;
+  return prisma.book.findFirst({
+    where: { id: input.bookId, userId: input.userId, galaxyId: input.galaxyId, deletedAt: null },
+    select: { id: true, status: true, version: true, draft: true },
   });
 }
 

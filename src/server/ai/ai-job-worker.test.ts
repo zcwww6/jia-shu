@@ -83,7 +83,7 @@ describe("AI job worker", () => {
     expect(retryOrFailAiJob).toHaveBeenCalledWith(expect.objectContaining({
       job,
       errorCode: "AI_PROVIDER_UNAVAILABLE",
-      errorSummary: "AI 服务暂不可用，请稍后重试。",
+      errorSummary: "智能整理暂不可用，请稍后重试。",
     }));
     expect(JSON.stringify(retryOrFailAiJob.mock.calls)).not.toContain("sk-sensitive");
   });
@@ -102,7 +102,7 @@ describe("AI job worker", () => {
     expect(retryOrFailAiJob).toHaveBeenCalledWith({
       job,
       errorCode: "AI_CONSENT_STALE",
-      errorSummary: "记忆内容已变化，请重新确认后发起 AI 整理。",
+      errorSummary: "记忆内容已变化，请重新确认后发起智能整理。",
       forceTerminal: true,
     });
   });

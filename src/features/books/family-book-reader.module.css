@@ -89,6 +89,29 @@
   outline: none;
 }
 
+.reviewHint {
+  max-width: 16rem;
+  color: #75562c;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.reviewButton {
+  border: 1px solid rgba(116, 79, 27, 0.34);
+  border-radius: 999px;
+  background: rgba(255, 246, 224, 0.78);
+  color: #533810;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.48rem 0.7rem;
+}
+
+.reviewButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .book:focus-visible {
   outline: 3px solid #ffe0a0;
   outline-offset: 8px;

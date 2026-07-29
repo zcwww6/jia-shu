@@ -178,7 +178,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
 
   private requireCapability(model: string | null) {
     if (!this.config.apiKey || !model || !this.config.baseUrl?.trim()) {
-      throw new DomainError("AI_NOT_CONFIGURED", 503, "AI 功能尚未配置。");
+      throw new DomainError("AI_NOT_CONFIGURED", 503, "智能整理尚未配置。");
     }
 
     return model;
@@ -188,7 +188,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
     const baseUrl = this.config.baseUrl?.trim();
 
     if (!baseUrl) {
-      throw new DomainError("AI_NOT_CONFIGURED", 503, "AI 功能尚未配置。");
+      throw new DomainError("AI_NOT_CONFIGURED", 503, "智能整理尚未配置。");
     }
 
     return `${baseUrl.replace(/\/+$/, "")}${path}`;
@@ -536,9 +536,9 @@ function embeddingValues(value: unknown): number[] | null {
 }
 
 function providerUnavailable() {
-  return new DomainError("AI_PROVIDER_UNAVAILABLE", 503, "AI 服务暂不可用，请稍后重试。");
+  return new DomainError("AI_PROVIDER_UNAVAILABLE", 503, "智能整理暂不可用，请稍后重试。");
 }
 
 function providerResponseInvalid() {
-  return new DomainError("AI_PROVIDER_RESPONSE_INVALID", 502, "AI 服务返回内容无法处理，请稍后重试。");
+  return new DomainError("AI_PROVIDER_RESPONSE_INVALID", 502, "智能整理返回内容无法处理，请稍后重试。");
 }

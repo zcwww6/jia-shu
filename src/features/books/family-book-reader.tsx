@@ -16,6 +16,9 @@ type FamilyBookReaderProps = {
   sourceLabels: Record<string, string>;
   title: string;
   className?: string;
+  onConfirmSpread?: (pageIndex: number) => void;
+  reviewedSpreadIndexes?: number[];
+  reviewingSpread?: boolean;
 };
 
 export function FamilyBookReader({
@@ -23,6 +26,9 @@ export function FamilyBookReader({
   className,
   intro,
   media,
+  onConfirmSpread,
+  reviewedSpreadIndexes = [],
+  reviewingSpread = false,
   sections,
   sourceLabels,
   title,
@@ -38,6 +44,8 @@ export function FamilyBookReader({
     ? sections
     : [{ title: "写给未来的我们", body, sourceMemoryIds: [] }];
   const spreadCount = narrativeSections.length + 2;
+  const nextReviewPageIndex = reviewedSpreadIndexes.length;
+  const reviewComplete = nextReviewPageIndex >= spreadCount;
   const turnOffset = turnDirection === "forward" ? 34 : -34;
   const turnRotation = turnDirection === "forward" ? 12 : -12;
   const enter = reduceMotion ? { opacity: 0 } : { opacity: 0, rotateY: turnRotation, x: turnOffset };
@@ -109,6 +117,22 @@ export function FamilyBookReader({
         <p><BookOpenText aria-hidden="true" size={16} /> 家书纪念册 · 已保存版本</p>
         <div className={styles.toolbarActions}>
           <span aria-live="polite" className={styles.pageIndicator}>第 {activeSpread + 1} / {spreadCount} 页</span>
+          {onConfirmSpread ? (
+            <>
+              <span className={styles.reviewHint} aria-live="polite">
+                {reviewComplete ? "全书已逐页确认，可以创建分享链接。" : `请依序确认第 ${nextReviewPageIndex + 1} / ${spreadCount} 页`}
+              </span>
+              <button
+                aria-label={`确认第 ${activeSpread + 1} 页`}
+                className={styles.reviewButton}
+                disabled={reviewingSpread || reviewComplete || activeSpread !== nextReviewPageIndex}
+                onClick={() => onConfirmSpread(activeSpread)}
+                type="button"
+              >
+                {reviewingSpread ? "正在确认…" : `确认第 ${activeSpread + 1} 页`}
+              </button>
+            </>
+          ) : null}
           <button
             aria-label="下载 PDF 纪念册"
             className={styles.exportButton}

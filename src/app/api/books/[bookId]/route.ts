@@ -22,8 +22,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ boo
     status: book.status,
     version: book.version,
     visibility: book.visibility,
+    reviewedSpreadIndexes: reviewedSpreadIndexesFromDraft(book.draft),
+    spreadCount: Array.isArray(book.sections) ? book.sections.length + 2 : 2,
     media: mediaFromBook(book),
   });
+}
+
+function reviewedSpreadIndexesFromDraft(draft: unknown) {
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return [];
+  const value = (draft as Record<string, unknown>).reviewedSpreadIndexes;
+  return Array.isArray(value) && value.every((index) => typeof index === "number" && Number.isInteger(index) && index >= 0)
+    ? value
+    : [];
 }
 
 function mediaFromBook(book: NonNullable<Awaited<ReturnType<typeof findActiveBookWithMedia>>>) {
@@ -75,6 +85,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ bo
     if (!userId) return NextResponse.json({ code: "UNAUTHENTICATED", message: "请先登录后再编辑家书。" }, { status: 401 });
     const payload = updateBookSchema.parse(await request.json()); const scope = await resolvePersonalGalaxyScope(userId); const { bookId } = await params;
     const book = await updateActiveBook({ ...scope, bookId, ...payload });
-    return NextResponse.json({ id: book!.id, title: book!.title, body: book!.body, version: book!.version });
+    return NextResponse.json({
+      id: book!.id,
+      title: book!.title,
+      body: book!.body,
+      version: book!.version,
+      status: book!.status,
+      reviewedSpreadIndexes: reviewedSpreadIndexesFromDraft(book!.draft),
+      spreadCount: Array.isArray(book!.sections) ? book!.sections.length + 2 : 2,
+    });
   } catch (error) { const status = error instanceof DomainError ? error.status : 400; const message = error instanceof DomainError ? error.message : "家书更新请求格式不正确。"; return NextResponse.json({ code: error instanceof DomainError ? error.code : "BOOK_UPDATE_INVALID", message }, { status }); }
 }

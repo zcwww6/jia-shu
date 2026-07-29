@@ -5,6 +5,7 @@ import {
   createLegacyBookShare,
   getLegacyBook,
   listLegacyBookShares,
+  reviewLegacyBookSpread,
   revokeLegacyBookShare,
   updateLegacyBook,
 } from "./legacy-book-api";
@@ -12,7 +13,7 @@ import {
 const createdBook = {
   id: "book-1",
   title: "除夕家书",
-  status: "ready" as const,
+  status: "draft" as const,
   draft: {
     sourceMemoryIds: ["memory-a", "memory-b"],
     sourceRange: "binary_system" as const,
@@ -66,7 +67,7 @@ describe("legacy book API bridge", () => {
       }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getLegacyBook("book-1")).resolves.toEqual({ ...createdBook, intro: "", media: [], sourceLabels: {} });
+    await expect(getLegacyBook("book-1")).resolves.toEqual({ ...createdBook, intro: "", media: [], sourceLabels: {}, reviewedSpreadIndexes: [], spreadCount: 3 });
     await expect(updateLegacyBook("book-1", {
       version: 1,
       title: "新标题",
@@ -114,6 +115,8 @@ describe("legacy book API bridge", () => {
       visibility: "family",
       intro: "写给未来的一封家书。",
       sourceLabels: { "memory-a": "妈妈的真实除夕" },
+      reviewedSpreadIndexes: [],
+      spreadCount: 2,
       media: [
         { id: "image-1", kind: "image", title: "团圆饭", caption: "桌上的热汤。", mimeType: "image/jpeg", originalName: "dinner.jpg", url: "/api/assets/image-1/content", width: 1600, height: 1200, durationMs: null },
         { id: "audio-1", kind: "audio", title: "外婆的声音", caption: "一句叮咛。", mimeType: "audio/mpeg", originalName: "grandma.mp3", url: "/api/assets/audio-1/content", width: null, height: null, durationMs: 21_000 },
@@ -148,9 +151,22 @@ describe("legacy book API bridge", () => {
     });
   });
 
-  it("surfaces an AI error instead of manufacturing a mock book", async () => {
+  it("submits one reviewed spread with the server version", async () => {
+    const response = { id: "book-1", status: "draft" as const, version: 2, reviewedSpreadIndexes: [0], spreadCount: 3 };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(response), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(reviewLegacyBookSpread("book-1", { pageIndex: 0, version: 1 })).resolves.toEqual(response);
+    expect(fetchMock).toHaveBeenCalledWith("/api/books/book-1/review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pageIndex: 0, version: 1 }),
+    });
+  });
+
+  it("surfaces an intelligent-service error instead of manufacturing a mock book", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ message: "AI 服务暂不可用" }), { status: 503 }),
+      new Response(JSON.stringify({ message: "智能服务暂不可用" }), { status: 503 }),
     ));
 
     await expect(createLegacyBook({
@@ -159,7 +175,7 @@ describe("legacy book API bridge", () => {
       themeTemplateKey: "family_reunion",
       visibility: "family",
     }, "book-request-1")).rejects.toMatchObject({
-      message: "AI 服务暂不可用",
+      message: "智能服务暂不可用",
       status: 503,
     });
   });

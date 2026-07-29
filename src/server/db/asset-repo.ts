@@ -304,7 +304,7 @@ export async function softDeleteAsset(input: {
     }
 
     if (lockedMemory[0]?.status === "processing") {
-      throw new DomainError("ASSET_IN_USE", 409, "该资源正在由 AI 处理，无法删除。");
+      throw new DomainError("ASSET_IN_USE", 409, "该资源正在由智能整理处理，无法删除。");
     }
 
     const coverReference = await transaction.planet.findFirst({

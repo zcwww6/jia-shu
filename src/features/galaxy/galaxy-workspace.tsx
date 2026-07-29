@@ -66,6 +66,7 @@ import {
   getLegacyBook,
   LegacyBookApiError,
   listLegacyBookShares,
+  reviewLegacyBookSpread,
   revokeLegacyBookShare,
   updateLegacyBook,
   type LegacyBookDetail,
@@ -989,12 +990,14 @@ export function GalaxyWorkspace({
         visibility: input.visibility,
         sourceLabels,
         sourceLabelList: Object.values(sourceLabels),
+        reviewedSpreadIndexes: [],
+        spreadCount: created.sections.length + 2,
       };
       setActiveBook(createdDetail);
       setBookTitleDraft(created.title);
       setBookBodyDraft(created.body);
       setGrowingBooks((current) => {
-        const next = { id: created.id, title: created.title, status: "ready" as const, memoryCount: created.draft.sourceMemoryIds.length };
+        const next = { id: created.id, title: created.title, status: created.status, memoryCount: created.draft.sourceMemoryIds.length };
         return [next, ...current.filter((book) => book.id !== created.id)];
       });
       await openSavedBook(created.id, Object.values(sourceLabels));
@@ -1055,6 +1058,10 @@ export function GalaxyWorkspace({
   async function createActiveBookShare() {
     if (!activeBook) {
       setShareError("请先打开一封真实已保存家书，再创建分享链接。");
+      return;
+    }
+    if (activeBook.status !== "ready") {
+      setShareError("请先逐页确认这封家书；确认完成后才可创建分享链接。 ");
       return;
     }
     const operation = currentBookOperation(activeBook.id);
@@ -1320,6 +1327,32 @@ export function GalaxyWorkspace({
     setCuratorTheme(theme);
     setSelectedTheme(theme);
     setToast(`已选择「${theme}」主题，可继续挑选装订素材`);
+  }
+
+  async function reviewActiveBookSpread(pageIndex: number) {
+    if (!activeBook || activeBook.status !== "draft") return;
+    const operation = currentBookOperation(activeBook.id);
+    if (!operation) return;
+
+    setBookLoading(true);
+    setBookSaveError(null);
+    try {
+      const reviewed = await reviewLegacyBookSpread(activeBook.id, { pageIndex, version: activeBook.version });
+      if (!isCurrentBookOperation(operation)) return;
+      setActiveBook((current) => current && current.id === reviewed.id
+        ? { ...current, ...reviewed }
+        : current);
+      const nextBookStatus = reviewed.status === "ready" ? "ready" : "draft";
+      setGrowingBooks((current) => current.map((book) => (
+        book.id === reviewed.id ? { ...book, status: nextBookStatus } : book
+      )));
+      setToast(reviewed.status === "ready" ? "全书已逐页确认，可以创建分享链接。" : `已确认第 ${pageIndex + 1} / ${reviewed.spreadCount} 页`);
+    } catch (error) {
+      if (!isCurrentBookOperation(operation)) return;
+      setBookSaveError(errorMessage(error));
+    } finally {
+      if (isCurrentBookOperation(operation)) setBookLoading(false);
+    }
   }
 
   function openCuratorDocumentRecord() {
@@ -2314,6 +2347,7 @@ export function GalaxyWorkspace({
               onOpenBookEditor={() => setBookEditorOpen(true)}
               onReturnToBookShelf={returnToBookShelf}
               onRevokeShare={revokeActiveBookShare}
+              onReviewBookSpread={reviewActiveBookSpread}
               onSaveBook={saveActiveBook}
               setBookBodyDraft={setBookBodyDraft}
               setBookTitleDraft={setBookTitleDraft}
@@ -2537,6 +2571,7 @@ function ZoneScene({
   onOpenPlanetLifecycle,
   onRenamePlanet,
   onRevokeShare,
+  onReviewBookSpread,
   onSaveBook,
   onSaveSelectedPlanetTheme,
   onSaveSelectedPlanetCover,
@@ -2613,6 +2648,7 @@ function ZoneScene({
   onOpenPlanetLifecycle: (planetId: string) => void;
   onRenamePlanet: (planet: Planet) => void;
   onRevokeShare: (token: string) => void;
+  onReviewBookSpread: (pageIndex: number) => void;
   onSaveBook: () => void;
   onSaveSelectedPlanetTheme: (theme: string) => void;
   onSaveSelectedPlanetCover: () => void;
@@ -2871,7 +2907,7 @@ function ZoneScene({
           <section aria-label="真实家书详情" className="book-reader-shell">
             <header className="book-reader-heading">
               <div>
-                <p className="panel-kicker">已保存家书 · 阅读中</p>
+                <p className="panel-kicker">{activeBook.status === "draft" ? "逐页确认中 · 阅读中" : "已确认家书 · 阅读中"}</p>
                 <h2>{activeBook.title || "未命名家书"}</h2>
               </div>
               <div className="book-reader-actions">
@@ -2884,6 +2920,9 @@ function ZoneScene({
               intro={activeBook.intro || "这封家书从已确认的家庭记忆中长出，留给以后每一次温柔的回望。"}
               key={activeBook.id}
               media={activeBook.media}
+              onConfirmSpread={activeBook.status === "draft" ? onReviewBookSpread : undefined}
+              reviewedSpreadIndexes={activeBook.reviewedSpreadIndexes}
+              reviewingSpread={bookLoading}
               sections={activeBook.sections}
               sourceLabels={activeBook.sourceLabels}
               title={bookTitleDraft || activeBook.title}
@@ -2927,7 +2966,8 @@ function ZoneScene({
                     <label><input checked={shareOptions.showBody} onChange={(event) => setShareOptions({ ...shareOptions, showBody: event.target.checked })} type="checkbox" />显示家书正文</label>
                     <label><input checked={shareOptions.showSourceTitles} onChange={(event) => setShareOptions({ ...shareOptions, showSourceTitles: event.target.checked })} type="checkbox" />显示来源标题</label>
                     <label><input aria-label="分享原始文本" checked={shareOptions.showOriginalText} onChange={(event) => setShareOptions({ ...shareOptions, showOriginalText: event.target.checked })} type="checkbox" />分享原始文本</label>
-                    <button className="secondary" disabled={shareLoading} onClick={onCreateShare} type="button">创建分享链接</button>
+                    {activeBook.status !== "ready" ? <p className="panel-readonly">请依序逐页确认家书；确认完成前不能创建分享链接。</p> : null}
+                    <button className="secondary" disabled={shareLoading || activeBook.status !== "ready"} onClick={onCreateShare} type="button">创建分享链接</button>
                     {shareError ? <p role="alert">{shareError}</p> : null}
                     {bookShares.map((share) => (
                       <div className="book-source" key={share.token}>

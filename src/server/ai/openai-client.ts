@@ -21,7 +21,7 @@ export function hasOpenAI(): boolean {
 
 export function assertTextAiConfigured(): void {
   if (!hasOpenAI()) {
-    throw new DomainError("AI_NOT_CONFIGURED", 503, "AI 功能尚未配置。");
+    throw new DomainError("AI_NOT_CONFIGURED", 503, "智能整理尚未配置。");
   }
 }
 
@@ -44,7 +44,7 @@ export function assertMemoryAiCapabilitiesConfigured(input: {
 
 function assertCapability(model: string | null): void {
   if (!env.OPENAI_API_KEY || !env.OPENAI_BASE_URL?.trim() || !model?.trim()) {
-    throw new DomainError("AI_NOT_CONFIGURED", 503, "AI 功能尚未配置。");
+    throw new DomainError("AI_NOT_CONFIGURED", 503, "智能整理尚未配置。");
   }
 }
 

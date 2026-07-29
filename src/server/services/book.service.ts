@@ -72,7 +72,7 @@ export type TrustedBookDraft = {
 export type BookCreateResponse = {
   id: string;
   title: string;
-  status: "ready";
+  status: "draft";
   draft: TrustedBookDraft;
   body: string;
   sections: TrustedBookSection[];
@@ -412,7 +412,7 @@ export async function createBookFromMemories(
       sections,
       sourceMemoryIds,
     };
-    const response: BookCreateResponse = { id, title, status: "ready", draft, body, sections };
+    const response: BookCreateResponse = { id, title, status: "draft", draft, body, sections };
 
     await deps.persistBookAndComplete({
       scope,
@@ -650,7 +650,7 @@ function invalidBookSource() {
 }
 
 function invalidAiProviderResponse() {
-  return new DomainError("AI_PROVIDER_RESPONSE_INVALID", 502, "AI 服务返回内容无法处理，请稍后重试。");
+  return new DomainError("AI_PROVIDER_RESPONSE_INVALID", 502, "智能整理返回内容无法处理，请稍后重试。");
 }
 
 function bookAiInputTooLarge() {

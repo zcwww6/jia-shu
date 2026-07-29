@@ -184,5 +184,9 @@ export const createShareSchema = z.object({
   showOriginalText: z.boolean(),
 }).strict();
 
+export const reviewBookSpreadSchema = optimisticVersionSchema.extend({
+  pageIndex: z.number().int().min(0).max(41),
+}).strict();
+
 export type MemoryDraftPatch = Omit<z.infer<typeof updateMemoryDraftSchema>, "version">;
 export type MemoryConfirmationPatch = Omit<z.infer<typeof confirmMemorySchema>, "version">;

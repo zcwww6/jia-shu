@@ -110,6 +110,27 @@ describe("FamilyBookReader", () => {
     expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
   });
 
+  it("lets an administrator confirm each visible spread in order", async () => {
+    const onConfirmSpread = vi.fn();
+
+    render(
+      <FamilyBookReader
+        body="写给未来的我们。"
+        intro="一本需要逐页确认的家书。"
+        media={[]}
+        onConfirmSpread={onConfirmSpread}
+        reviewedSpreadIndexes={[]}
+        sections={[{ title: "第一章", body: "第一页的故事。", sourceMemoryIds: [] }]}
+        sourceLabels={{}}
+        title="确认中的灯"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "确认第 1 页" }));
+    expect(onConfirmSpread).toHaveBeenCalledWith(0);
+    expect(screen.getByText("请依序确认第 1 / 3 页")).toBeInTheDocument();
+  });
+
   it("keeps the visible spread in sync during rapid forward and backward turns", () => {
     render(
       <FamilyBookReader

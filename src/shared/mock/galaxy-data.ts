@@ -35,7 +35,7 @@ export const galaxyZones: GalaxyZone[] = [
     key: "memories",
     label: "记忆星群",
     href: "/memory/new",
-    description: "点亮记忆星并确认 AI 整理结果。",
+    description: "点亮记忆星并确认智能整理结果。",
   },
   {
     key: "resonance",

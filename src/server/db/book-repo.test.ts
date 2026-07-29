@@ -10,7 +10,7 @@ vi.mock("@/server/db/client", () => ({
 
 import * as bookRepo from "./book-repo";
 
-const { findActiveBook, softDeleteBook } = bookRepo;
+const { findActiveBook, softDeleteBook, updateActiveBook } = bookRepo;
 const bookRepoWithSources = bookRepo as typeof bookRepo & {
   findEligibleBookSources: (input: {
     userId: string;
@@ -36,6 +36,45 @@ const bookRepoWithSources = bookRepo as typeof bookRepo & {
 describe("book repo", () => {
   beforeEach(() => {
     getPrismaClient.mockReset();
+  });
+
+  it("resets completed page review when an approved book's visible content changes", async () => {
+    const current = {
+      id: "book-1", userId: "user-1", galaxyId: "galaxy-1", status: "ready", version: 4,
+      title: "旧标题", body: "旧正文", draft: { sourceMemoryIds: ["memory-1"], reviewedSpreadIndexes: [0, 1, 2] },
+    };
+    const updated = { ...current, title: "新标题", body: "新正文", status: "draft", version: 5, draft: { sourceMemoryIds: ["memory-1"], reviewedSpreadIndexes: [] } };
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findFirst = vi.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(updated);
+    getPrismaClient.mockReturnValue({ book: { findFirst, updateMany } });
+
+    await expect(updateActiveBook({ userId: "user-1", galaxyId: "galaxy-1", bookId: "book-1", version: 4, title: "新标题", body: "新正文" })).resolves.toEqual(updated);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: "book-1", userId: "user-1", galaxyId: "galaxy-1", deletedAt: null, version: 4 },
+      data: {
+        title: "新标题",
+        body: "新正文",
+        status: "draft",
+        draft: { sourceMemoryIds: ["memory-1"], reviewedSpreadIndexes: [] },
+        version: { increment: 1 },
+      },
+    });
+  });
+
+  it("creates a fresh review progress record when an older approved book has no draft metadata", async () => {
+    const current = {
+      id: "book-1", userId: "user-1", galaxyId: "galaxy-1", status: "ready", version: 4,
+      title: "旧标题", body: "旧正文", draft: null,
+    };
+    const updated = { ...current, body: "新正文", status: "draft", version: 5, draft: { reviewedSpreadIndexes: [] } };
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findFirst = vi.fn().mockResolvedValueOnce(current).mockResolvedValueOnce(updated);
+    getPrismaClient.mockReturnValue({ book: { findFirst, updateMany } });
+
+    await expect(updateActiveBook({ userId: "user-1", galaxyId: "galaxy-1", bookId: "book-1", version: 4, body: "新正文" })).resolves.toEqual(updated);
+    expect(updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "draft", draft: { reviewedSpreadIndexes: [] } }),
+    }));
   });
 
   it("reads an active book only inside the caller's galaxy scope", async () => {
@@ -73,7 +112,7 @@ describe("book repo", () => {
     });
   });
 
-  it("creates a ready book and its trusted BookMemory source rows together", async () => {
+  it("creates a review draft and its trusted BookMemory source rows together", async () => {
     const create = vi.fn().mockResolvedValue({ id: "book-1", title: "除夕家书" });
     const $queryRaw = vi.fn().mockResolvedValue([{ id: "memory-1" }, { id: "memory-2" }]);
     const transaction = { book: { create }, $queryRaw };
@@ -112,7 +151,7 @@ describe("book repo", () => {
         sourceRange: "binary_system",
         themeTemplateKey: "family_reunion",
         visibility: "family",
-        status: "ready",
+        status: "draft",
         draft,
         body: "团圆。\n\n团圆\n围桌而坐。",
         sections,

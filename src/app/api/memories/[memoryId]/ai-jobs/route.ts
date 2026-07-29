@@ -29,7 +29,7 @@ async function requireScope() {
   const userId = session?.user?.id;
 
   if (!userId) {
-    throw new DomainError("UNAUTHENTICATED", 401, "请先登录后再使用 AI 整理记忆。");
+    throw new DomainError("UNAUTHENTICATED", 401, "请先登录后再使用智能整理记忆。");
   }
 
   return resolvePersonalGalaxyScope(userId);
