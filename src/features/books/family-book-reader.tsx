@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useRef, useState, type KeyboardEvent } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { BookOpenText, ChevronLeft, ChevronRight, Download, ImageIcon, LoaderCircle, Music2, Quote } from "lucide-react";
 
 import type { FamilyBookMedia, FamilyBookSection } from "@/shared/types/family-book";
@@ -30,12 +30,40 @@ export function FamilyBookReader({
   const exportBookRef = useRef<HTMLElement>(null);
   const [exportState, setExportState] = useState<"idle" | "exporting" | "failed">("idle");
   const [activeSpread, setActiveSpread] = useState(0);
+  const [turnDirection, setTurnDirection] = useState<"forward" | "backward">("forward");
+  const reduceMotion = useReducedMotion() ?? false;
   const imageMedia = media.filter((item) => item.kind === "image");
   const audioMedia = media.filter((item) => item.kind === "audio");
   const narrativeSections = sections.length > 0
     ? sections
     : [{ title: "写给未来的我们", body, sourceMemoryIds: [] }];
   const spreadCount = narrativeSections.length + 2;
+  const turnOffset = turnDirection === "forward" ? 34 : -34;
+  const turnRotation = turnDirection === "forward" ? 12 : -12;
+  const enter = reduceMotion ? { opacity: 0 } : { opacity: 0, rotateY: turnRotation, x: turnOffset };
+  const exit = reduceMotion ? { opacity: 0 } : { opacity: 0, rotateY: -turnRotation, x: -turnOffset };
+  const settled = reduceMotion ? { opacity: 1 } : { opacity: 1, rotateY: 0, x: 0 };
+
+  function turnTo(next: number) {
+    const nextSpread = Math.min(Math.max(next, 0), spreadCount - 1);
+    if (nextSpread === activeSpread) return;
+
+    setTurnDirection(nextSpread > activeSpread ? "forward" : "backward");
+    setActiveSpread(nextSpread);
+  }
+
+  function onReaderKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget) return;
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      turnTo(activeSpread - 1);
+    }
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      turnTo(activeSpread + 1);
+    }
+  }
 
   async function exportKeepsakePdf() {
     const book = exportBookRef.current;
@@ -80,7 +108,7 @@ export function FamilyBookReader({
       <div className={styles.toolbar} data-html2canvas-ignore="true">
         <p><BookOpenText aria-hidden="true" size={16} /> 家书纪念册 · 已保存版本</p>
         <div className={styles.toolbarActions}>
-          <span aria-live="polite" className={styles.pageIndicator}>第 {activeSpread + 1} / {spreadCount} 跨页</span>
+          <span aria-live="polite" className={styles.pageIndicator}>第 {activeSpread + 1} / {spreadCount} 页</span>
           <button
             aria-label="下载 PDF 纪念册"
             className={styles.exportButton}
@@ -95,36 +123,43 @@ export function FamilyBookReader({
       </div>
       {exportState === "failed" ? <p className={styles.exportError} role="alert">PDF 导出暂未完成，请确认图片加载完成后重试。</p> : null}
 
-      <article aria-label="家书纪念册预览" className={styles.book}>
-        <AnimatePresence initial={false} mode="wait">
-          <motion.div
-            animate={{ opacity: 1, rotateY: 0, x: 0 }}
-            className={styles.turningSpread}
-            exit={{ opacity: 0, rotateY: -7, x: -18 }}
-            initial={{ opacity: 0, rotateY: 8, x: 18 }}
-            key={activeSpread}
-            transition={{ duration: 0.34, ease: [0.2, 0.8, 0.2, 1] }}
-          >
-            <BookSpread
-              body={body}
-              imageMedia={imageMedia}
-              index={activeSpread}
-              intro={intro}
-              narrativeSections={narrativeSections}
-              sourceLabels={sourceLabels}
-              title={title}
-              audioMedia={audioMedia}
-              testId="visible-family-book-spread"
-            />
-          </motion.div>
-        </AnimatePresence>
+      <article
+        aria-label="家书纪念册预览"
+        aria-roledescription="可翻页家书"
+        className={styles.book}
+        onKeyDown={onReaderKeyDown}
+        tabIndex={0}
+      >
+        <div className={styles.visibleSpread} data-spread-index={activeSpread} data-testid="visible-family-book-spread">
+          <AnimatePresence initial={false}>
+            <motion.div
+              animate={settled}
+              className={styles.turningSpread}
+              exit={exit}
+              initial={enter}
+              key={activeSpread}
+              transition={{ duration: reduceMotion ? 0.16 : 0.34, ease: [0.2, 0.8, 0.2, 1] }}
+            >
+              <BookSpread
+                body={body}
+                imageMedia={imageMedia}
+                index={activeSpread}
+                intro={intro}
+                narrativeSections={narrativeSections}
+                sourceLabels={sourceLabels}
+                title={title}
+                audioMedia={audioMedia}
+              />
+            </motion.div>
+          </AnimatePresence>
+        </div>
         <div className={styles.readerControls} data-html2canvas-ignore="true">
-          <button aria-label="上一组双页" className={styles.turnButton} disabled={activeSpread === 0} onClick={() => setActiveSpread((current) => Math.max(0, current - 1))} type="button">
-            <ChevronLeft aria-hidden="true" size={18} /> 上一组
+          <button aria-label="上一页" className={styles.turnButton} disabled={activeSpread === 0} onClick={() => turnTo(activeSpread - 1)} type="button">
+            <ChevronLeft aria-hidden="true" size={18} /> 上一页
           </button>
-          <span>每次只展开一组双页</span>
-          <button aria-label="下一组双页" className={styles.turnButton} disabled={activeSpread === spreadCount - 1} onClick={() => setActiveSpread((current) => Math.min(spreadCount - 1, current + 1))} type="button">
-            下一组 <ChevronRight aria-hidden="true" size={18} />
+          <span className={styles.readerHint}>可使用方向键翻页</span>
+          <button aria-label="下一页" className={styles.turnButton} disabled={activeSpread === spreadCount - 1} onClick={() => turnTo(activeSpread + 1)} type="button">
+            下一页 <ChevronRight aria-hidden="true" size={18} />
           </button>
         </div>
       </article>
@@ -156,7 +191,6 @@ function BookSpread({
   intro,
   narrativeSections,
   sourceLabels,
-  testId,
   title,
 }: {
   audioMedia: FamilyBookMedia[];
@@ -166,12 +200,11 @@ function BookSpread({
   intro: string;
   narrativeSections: FamilyBookSection[];
   sourceLabels: Record<string, string>;
-  testId?: string;
   title: string;
 }) {
   if (index === 0) {
     return (
-      <div className={[styles.spread, styles.openingSpread].join(" ")} data-family-book-spread data-spread-index={index} data-testid={testId}>
+      <div className={[styles.spread, styles.openingSpread].join(" ")} data-family-book-spread data-spread-index={index}>
         <section className={[styles.page, styles.coverPage].join(" ")}>
           <span className={styles.coverEyebrow}>家书星球 · 家庭私藏</span>
           <div className={styles.coverOrbit} aria-hidden="true"><i /><i /><i /></div>
@@ -196,7 +229,7 @@ function BookSpread({
     const audio = audioMedia[narrativeIndex % audioMedia.length];
     const isImageOnLeft = narrativeIndex % 2 === 0;
     return (
-      <div className={styles.spread} data-family-book-spread data-spread-index={index} data-testid={testId}>
+      <div className={styles.spread} data-family-book-spread data-spread-index={index}>
         <BookNarrativePage
           audio={audio}
           image={isImageOnLeft ? image : undefined}
@@ -217,7 +250,7 @@ function BookSpread({
   }
 
   return (
-    <div className={[styles.spread, styles.closingSpread].join(" ")} data-family-book-spread data-spread-index={index} data-testid={testId}>
+    <div className={[styles.spread, styles.closingSpread].join(" ")} data-family-book-spread data-spread-index={index}>
       <section className={[styles.page, styles.letterPage].join(" ")}>
         <span className={styles.pageNumber}>附言</span>
         <p className={styles.letterLabel}>写给未来的我们</p>
