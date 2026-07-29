@@ -1,7 +1,14 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+import sharp from "sharp";
 
 type Options = {
+  appContainer?: string;
   baseUrl: string;
   container: string;
   dryRun: boolean;
@@ -13,6 +20,11 @@ type DatabaseTarget = {
   container: string;
   database: string;
   user: string;
+};
+
+type MediaTarget = {
+  container: string;
+  root: string;
 };
 
 type GalaxyScope = {
@@ -63,7 +75,37 @@ type ResonanceSeed = {
   targetMemoryId: string;
 };
 
+type DemoMediaSource = {
+  fileName: string;
+  label: "kitchen-light" | "rainy-drive" | "starlight-drawing" | "osmanthus-recipe";
+  memoryLabel: "memory-kitchen-light" | "memory-rainy-school-run" | "memory-family-portrait" | "memory-grandma-recipe";
+  originalName: string;
+  planetLabel: "planet-mom" | "planet-dad" | "planet-child" | "planet-grandma-memorial";
+};
+
+type DemoAssetSeed = {
+  bytes: Uint8Array;
+  height: number;
+  id: string;
+  kind: "image" | "planet_cover";
+  memoryId: string | null;
+  mimeType: "image/webp";
+  normalizedBytes: Uint8Array;
+  normalizedStorageKey: string;
+  originalName: string;
+  planetId: string;
+  sha256: string;
+  sizeBytes: number;
+  sourceFileName: string;
+  storageKey: string;
+  thumbnailBytes: Uint8Array;
+  thumbnailStorageKey: string;
+  visibility: "family" | "private";
+  width: number;
+};
+
 type DemoDataset = {
+  assets: DemoAssetSeed[];
   book: {
     body: string;
     draft: Record<string, unknown>;
@@ -82,6 +124,13 @@ type DemoDataset = {
 };
 
 const DEMO_MARKER = "legacy-family-demo-v1";
+const DEMO_MEDIA_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "demo-media");
+const DEMO_MEDIA_SOURCES: readonly DemoMediaSource[] = [
+  { label: "kitchen-light", fileName: "kitchen-light.webp", originalName: "雨夜厨房的灯.webp", memoryLabel: "memory-kitchen-light", planetLabel: "planet-mom" },
+  { label: "rainy-drive", fileName: "rainy-drive.webp", originalName: "雨夜送学的车灯.webp", memoryLabel: "memory-rainy-school-run", planetLabel: "planet-dad" },
+  { label: "starlight-drawing", fileName: "starlight-drawing.webp", originalName: "星空里的全家福.webp", memoryLabel: "memory-family-portrait", planetLabel: "planet-child" },
+  { label: "osmanthus-recipe", fileName: "osmanthus-recipe.webp", originalName: "外婆的桂花糕.webp", memoryLabel: "memory-grandma-recipe", planetLabel: "planet-grandma-memorial" },
+];
 
 async function main() {
   const options = readOptions(process.argv.slice(2));
@@ -91,7 +140,13 @@ async function main() {
       status: "dry-run",
       marker: DEMO_MARKER,
       story: "林晚晴、沈知秋、林小满与外婆的纪念星",
-      intended: { planets: 4, memories: 8, relationships: 4, confirmedResonances: 3, books: 1, activeShares: 1 },
+      intended: { planets: 4, memories: 8, relationships: 4, confirmedResonances: 3, books: 1, activeShares: 1, imageAssets: 4, planetCovers: 4, storedMediaFiles: 24 },
+      media: {
+        assetIdDerivation: `stableId(${DEMO_MARKER}:<userId>:asset-image-<source>) / stableId(${DEMO_MARKER}:<userId>:asset-cover-<source>)`,
+        dimensions: { width: 1600, height: 1200 },
+        mimeType: "image/webp",
+        sourceImages: DEMO_MEDIA_SOURCES.map((source) => source.fileName),
+      },
       note: "不会连接数据库，也不会修改任何数据。",
     }, null, 2));
     return;
@@ -99,17 +154,20 @@ async function main() {
 
   const target = await readDatabaseTarget(options.container);
   const scope = chooseScope(await listGalaxyScopes(target), options);
-  const dataset = createDemoDataset(scope);
+  const dataset = await createDemoDataset(scope);
+  const mediaTarget = await readMediaTarget(options, target.container);
 
   await runPsql(target, buildSeedSql(scope, dataset));
+  await copyDemoMedia(mediaTarget, dataset);
   const verification = await verifySeed(target, scope, dataset);
+  await verifyStoredMedia(mediaTarget, dataset);
 
   console.log(JSON.stringify({
     status: "seeded",
     marker: DEMO_MARKER,
     galaxyName: scope.galaxyName,
     story: "林晚晴、沈知秋、林小满与外婆的纪念星",
-    verification,
+    verification: { ...verification, storedMediaFiles: dataset.assets.length * 3 },
     shareUrl: `${options.baseUrl}/share/${dataset.share.token}`,
     note: "本次仅追加固定标记的虚构演示故事；已有真实星球、记忆和家书均未改动。",
   }, null, 2));
@@ -129,11 +187,12 @@ function readOptions(args: string[]): Options {
       continue;
     }
 
-    if (value === "--container" || value === "--user-id" || value === "--galaxy-id" || value === "--base-url") {
+    if (value === "--container" || value === "--app-container" || value === "--user-id" || value === "--galaxy-id" || value === "--base-url") {
       const next = args[index + 1];
       if (!next || next.startsWith("--")) throw new Error(`${value} 需要一个值。`);
       index += 1;
       if (value === "--container") options.container = next;
+      if (value === "--app-container") options.appContainer = next;
       if (value === "--user-id") options.userId = next;
       if (value === "--galaxy-id") options.galaxyId = next;
       if (value === "--base-url") options.baseUrl = next.replace(/\/$/, "");
@@ -141,7 +200,7 @@ function readOptions(args: string[]): Options {
     }
 
     if (value === "--help" || value === "-h") {
-      console.log("用法：npx tsx scripts/seed-legacy-demo-data.ts [--user-id <id>] [--galaxy-id <id>] [--container <name>] [--base-url <url>] [--dry-run]");
+      console.log("用法：npx tsx scripts/seed-legacy-demo-data.ts [--user-id <id>] [--galaxy-id <id>] [--container <postgres-name>] [--app-container <app-name>] [--base-url <url>] [--dry-run]");
       process.exit(0);
     }
 
@@ -152,16 +211,63 @@ function readOptions(args: string[]): Options {
 }
 
 async function readDatabaseTarget(container: string): Promise<DatabaseTarget> {
-  const inspected = await runCommand("docker", ["inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", container]);
-  const variables = new Map(inspected.stdout.trim().split(/\r?\n/).filter(Boolean).map((line) => {
-    const separator = line.indexOf("=");
-    return [line.slice(0, separator), line.slice(separator + 1)];
-  }));
+  const variables = await readContainerEnvironment(container);
   const user = variables.get("POSTGRES_USER");
   const database = variables.get("POSTGRES_DB");
 
   if (!user || !database) throw new Error(`容器 ${container} 未提供 POSTGRES_USER 或 POSTGRES_DB。`);
   return { container, user, database };
+}
+
+async function readMediaTarget(options: Options, databaseContainer: string): Promise<MediaTarget> {
+  const container = options.appContainer ?? await findComposeAppContainer(databaseContainer);
+  const variables = await readContainerEnvironment(container);
+  const root = validateMediaRoot(variables.get("MEDIA_STORAGE_ROOT"));
+  return { container, root };
+}
+
+async function readContainerEnvironment(container: string) {
+  const inspected = await runCommand("docker", ["inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", container]);
+  return new Map(inspected.stdout.trim().split(/\r?\n/).filter(Boolean).map((line) => {
+    const separator = line.indexOf("=");
+    return [line.slice(0, separator), line.slice(separator + 1)];
+  }));
+}
+
+async function findComposeAppContainer(databaseContainer: string) {
+  const inspected = await runCommand("docker", [
+    "inspect",
+    "-f",
+    "{{index .Config.Labels \"com.docker.compose.project\"}}",
+    databaseContainer,
+  ]);
+  const project = inspected.stdout.trim();
+
+  if (!project) {
+    throw new Error(`容器 ${databaseContainer} 未标记 Compose 项目；请通过 --app-container 明确指定应用容器。`);
+  }
+
+  const listed = await runCommand("docker", [
+    "ps",
+    "--filter", `label=com.docker.compose.project=${project}`,
+    "--filter", "label=com.docker.compose.service=app",
+    "--format", "{{.Names}}",
+  ]);
+  const containers = listed.stdout.trim().split(/\r?\n/).filter(Boolean);
+
+  if (containers.length !== 1) {
+    throw new Error(`Compose 项目 ${project} 未找到唯一运行中的 app 容器；请通过 --app-container 明确指定。`);
+  }
+
+  return containers[0]!;
+}
+
+function validateMediaRoot(value: string | undefined) {
+  const root = value?.replace(/\/+$/, "");
+  if (!root || !/^\/(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+$/.test(root)) {
+    throw new Error("应用容器的 MEDIA_STORAGE_ROOT 必须是安全的绝对 POSIX 路径。 ");
+  }
+  return root;
 }
 
 async function listGalaxyScopes(target: DatabaseTarget): Promise<GalaxyScope[]> {
@@ -204,7 +310,7 @@ function chooseScope(scopes: GalaxyScope[], options: Options): GalaxyScope {
   return matches[0];
 }
 
-function createDemoDataset(scope: GalaxyScope): DemoDataset {
+async function createDemoDataset(scope: GalaxyScope): Promise<DemoDataset> {
   const id = (label: string) => stableId(`${scope.userId}:${label}`);
   const mom = id("planet-mom");
   const dad = id("planet-dad");
@@ -339,8 +445,13 @@ function createDemoDataset(scope: GalaxyScope): DemoDataset {
     intro: "这封家书写给未来的我们：愿每一次回望，都还能看见彼此点亮的那盏灯。",
     chapters: sections.map((section) => ({ title: section.title, sourceMemoryIds: section.sourceMemoryIds })),
   };
+  const assets = await createDemoAssets({
+    id,
+    scope,
+  });
 
   return {
+    assets,
     planets: [
       { id: mom, name: "林晚晴", type: "parent", lifeState: "active", role: "妈妈 · 家庭记录者", theme: "桂花与暖灯", summary: "她把平常的晚饭、等候与拥抱都记成一家人的回家路。", position: { x: 31, y: 44 } },
       { id: dad, name: "沈知秋", type: "parent", lifeState: "active", role: "爸爸 · 守望者", theme: "雨夜车灯", summary: "他不擅长把爱说得很响，却总在需要时把路照亮。", position: { x: 65, y: 39 } },
@@ -370,8 +481,131 @@ function createDemoDataset(scope: GalaxyScope): DemoDataset {
   };
 }
 
+async function createDemoAssets(input: {
+  id: (label: string) => string;
+  scope: GalaxyScope;
+}): Promise<DemoAssetSeed[]> {
+  const assets: DemoAssetSeed[] = [];
+
+  for (const source of DEMO_MEDIA_SOURCES) {
+    const filePath = join(DEMO_MEDIA_DIRECTORY, source.fileName);
+    const bytes = new Uint8Array(await readFile(filePath));
+    const metadata = await sharp(bytes).metadata();
+
+    if (metadata.format !== "webp" || metadata.width !== 1600 || metadata.height !== 1200) {
+      throw new Error(`演示图片 ${source.fileName} 必须是 1600×1200 的 WebP。`);
+    }
+
+    const normalizedBytes = new Uint8Array(await sharp(bytes).rotate().webp({ quality: 90, effort: 6 }).toBuffer());
+    const thumbnailBytes = new Uint8Array(await sharp(bytes)
+      .rotate()
+      .resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer());
+    const memoryId = input.id(source.memoryLabel);
+    const planetId = input.id(source.planetLabel);
+    const imageAssetId = input.id(`asset-image-${source.label}`);
+    const coverAssetId = input.id(`asset-cover-${source.label}`);
+
+    for (const asset of [
+      { id: imageAssetId, kind: "image" as const, memoryId, visibility: "family" as const },
+      { id: coverAssetId, kind: "planet_cover" as const, memoryId: null, visibility: "private" as const },
+    ]) {
+      assets.push({
+        bytes,
+        height: metadata.height,
+        id: asset.id,
+        kind: asset.kind,
+        memoryId: asset.memoryId,
+        mimeType: "image/webp",
+        normalizedBytes,
+        normalizedStorageKey: createDerivativeStorageKey(input.scope.userId, asset.id, "webp", "normalized"),
+        originalName: source.originalName,
+        planetId,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        sizeBytes: bytes.byteLength,
+        sourceFileName: source.fileName,
+        storageKey: createStorageKey(input.scope.userId, asset.id, "webp"),
+        thumbnailBytes,
+        thumbnailStorageKey: createDerivativeStorageKey(input.scope.userId, asset.id, "jpg", "thumbnail"),
+        visibility: asset.visibility,
+        width: metadata.width,
+      });
+    }
+  }
+
+  return assets;
+}
+
 function stableId(value: string) {
   return `c${createHash("sha256").update(`${DEMO_MARKER}:${value}`).digest("hex").slice(0, 24)}`;
+}
+
+function createStorageKey(userId: string, assetId: string, extension: string) {
+  if (!/^[A-Za-z0-9_-]+$/.test(userId) || !/^[A-Za-z0-9_-]+$/.test(assetId) || !/^[A-Za-z0-9]+$/.test(extension)) {
+    throw new Error("演示媒体生成了不安全的存储键。 ");
+  }
+  return `${userId}/${assetId.slice(0, 2)}/${assetId}.${extension}`;
+}
+
+function createDerivativeStorageKey(
+  userId: string,
+  assetId: string,
+  extension: string,
+  variant: "normalized" | "thumbnail",
+) {
+  return createStorageKey(userId, `${assetId}_${variant}`, extension);
+}
+
+function containerMediaPath(target: MediaTarget, key: string) {
+  if (!/^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.[A-Za-z0-9]+$/.test(key)) {
+    throw new Error("演示媒体生成了不安全的容器存储键。 ");
+  }
+  return `${target.root}/${key}`;
+}
+
+function quotePosixShell(value: string) {
+  return `'${value.replace(/'/g, "'\\\"'\\\"'")}'`;
+}
+
+async function copyDemoMedia(target: MediaTarget, dataset: DemoDataset) {
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "jiashu-demo-media-"));
+
+  try {
+    for (const asset of dataset.assets) {
+      const normalizedPath = join(temporaryDirectory, `${asset.id}_normalized.webp`);
+      const thumbnailPath = join(temporaryDirectory, `${asset.id}_thumbnail.jpg`);
+      await writeFile(normalizedPath, asset.normalizedBytes);
+      await writeFile(thumbnailPath, asset.thumbnailBytes);
+
+      const files = [
+        { key: asset.storageKey, source: join(DEMO_MEDIA_DIRECTORY, asset.sourceFileName) },
+        { key: asset.normalizedStorageKey, source: normalizedPath },
+        { key: asset.thumbnailStorageKey, source: thumbnailPath },
+      ];
+
+      for (const file of files) {
+        const destination = containerMediaPath(target, file.key);
+        const directory = destination.slice(0, destination.lastIndexOf("/"));
+        await runCommand("docker", ["exec", target.container, "sh", "-c", `mkdir -p -- ${quotePosixShell(directory)}`]);
+        await runCommand("docker", ["cp", file.source, `${target.container}:${destination}`]);
+      }
+    }
+  } finally {
+    await rm(temporaryDirectory, { force: true, recursive: true });
+  }
+}
+
+async function verifyStoredMedia(target: MediaTarget, dataset: DemoDataset) {
+  const keys = dataset.assets.flatMap((asset) => [
+    asset.storageKey,
+    asset.normalizedStorageKey,
+    asset.thumbnailStorageKey,
+  ]);
+  const checks = keys
+    .map((key) => `test -s ${quotePosixShell(containerMediaPath(target, key))}`)
+    .join(" && ");
+  await runCommand("docker", ["exec", target.container, "sh", "-c", `set -eu; ${checks}`]);
 }
 
 function buildSeedSql(scope: GalaxyScope, dataset: DemoDataset) {
@@ -399,6 +633,15 @@ function buildSeedSql(scope: GalaxyScope, dataset: DemoDataset) {
     ${sql(memory.id)}, ${sql(scope.userId)}, ${sql(scope.galaxyId)}, ${sql(memory.planetId)}, ${sql(memory.sourceText)}, ${sql(memory.title)},
     ${sql(memory.summary)}, ${json(memory.tags)}, '[]'::jsonb, ${sql(memory.occurredAtLabel)}, ${sql(memory.occurredAt)}::timestamp,
     ${sql(memory.locationLabel)}, ${json(memory.people)}, 'family'::"ContentVisibility", true, true, 'confirmed'::"MemoryStatus", ${now}, 1, ${now}, ${now}
+  )`).join(",\n");
+  const assets = dataset.assets.map((asset) => `(
+    ${sql(asset.id)}, ${sql(scope.userId)}, ${sql(scope.galaxyId)}, ${sql(asset.planetId)}, ${asset.memoryId ? sql(asset.memoryId) : "NULL"},
+    ${sql(asset.kind)}::"MemoryAssetKind", ${sql(asset.visibility)}::"ContentVisibility", ${sql(asset.storageKey)}, ${sql(asset.mimeType)}, ${asset.sizeBytes},
+    ${sql(asset.sha256)}, ${sql(asset.originalName)}, ${asset.width}, ${asset.height}, ${sql(asset.thumbnailStorageKey)}, ${sql(asset.normalizedStorageKey)},
+    'ready'::"AssetProcessingStatus", 1, ${now}, ${now}
+  )`).join(",\n");
+  const planetCovers = dataset.assets.filter((asset) => asset.kind === "planet_cover").map((asset) => `(
+    ${sql(asset.planetId)}, ${sql(asset.id)}
   )`).join(",\n");
   const resonances = dataset.resonances.map((resonance) => `(
     ${sql(resonance.id)}, ${sql(scope.userId)}, ${sql(scope.galaxyId)}, ${sql(resonance.sourceMemoryId)}, ${sql(resonance.targetMemoryId)},
@@ -432,6 +675,19 @@ function buildSeedSql(scope: GalaxyScope, dataset: DemoDataset) {
     ) VALUES ${memories}
     ON CONFLICT DO NOTHING;
 
+    INSERT INTO "MemoryAsset" (
+      "id", "userId", "galaxyId", "planetId", "memoryId", "kind", "visibility", "storageKey", "mimeType", "sizeBytes", "sha256", "originalName", "width", "height", "thumbnailStorageKey", "normalizedStorageKey", "status", "version", "createdAt", "updatedAt"
+    ) VALUES ${assets}
+    ON CONFLICT DO NOTHING;
+
+    UPDATE "Planet" AS planet
+    SET "coverAssetId" = cover."assetId", "updatedAt" = ${now}
+    FROM (VALUES ${planetCovers}) AS cover("planetId", "assetId")
+    WHERE planet."id" = cover."planetId"
+      AND planet."userId" = ${sql(scope.userId)}
+      AND planet."galaxyId" = ${sql(scope.galaxyId)}
+      AND (planet."coverAssetId" IS NULL OR planet."coverAssetId" = cover."assetId");
+
     INSERT INTO "ResonanceCandidate" (
       "id", "userId", "galaxyId", "sourceMemoryId", "targetMemoryId", "score", "reason", "status", "confirmedAt", "version", "createdAt", "updatedAt"
     ) VALUES ${resonances}
@@ -461,6 +717,8 @@ function buildSeedSql(scope: GalaxyScope, dataset: DemoDataset) {
 
 async function verifySeed(target: DatabaseTarget, scope: GalaxyScope, dataset: DemoDataset) {
   const ids = {
+    imageAssets: dataset.assets.filter((asset) => asset.kind === "image").map((asset) => asset.id),
+    planetCovers: dataset.assets.filter((asset) => asset.kind === "planet_cover").map((asset) => asset.id),
     planets: dataset.planets.map((item) => item.id),
     memories: dataset.memories.map((item) => item.id),
     resonances: dataset.resonances.map((item) => item.id),
@@ -472,11 +730,25 @@ async function verifySeed(target: DatabaseTarget, scope: GalaxyScope, dataset: D
       'relationships', (SELECT COUNT(*) FROM "PlanetRelationship" WHERE "userId" = ${sql(scope.userId)} AND "galaxyId" = ${sql(scope.galaxyId)} AND "id" IN (${dataset.relationships.map((item) => sql(item.id)).join(", ")}) AND "deletedAt" IS NULL),
       'confirmedResonances', (SELECT COUNT(*) FROM "ResonanceCandidate" WHERE "userId" = ${sql(scope.userId)} AND "galaxyId" = ${sql(scope.galaxyId)} AND "id" IN (${ids.resonances.map(sql).join(", ")}) AND "status" = 'confirmed' AND "deletedAt" IS NULL),
       'readyBooks', (SELECT COUNT(*) FROM "Book" WHERE "userId" = ${sql(scope.userId)} AND "galaxyId" = ${sql(scope.galaxyId)} AND "id" = ${sql(dataset.book.id)} AND "status" = 'ready' AND "deletedAt" IS NULL),
-      'activeShares', (SELECT COUNT(*) FROM "SharedBook" WHERE "userId" = ${sql(scope.userId)} AND "galaxyId" = ${sql(scope.galaxyId)} AND "bookId" = ${sql(dataset.book.id)} AND "token" = ${sql(dataset.share.token)} AND "revokedAt" IS NULL)
+      'activeShares', (SELECT COUNT(*) FROM "SharedBook" WHERE "userId" = ${sql(scope.userId)} AND "galaxyId" = ${sql(scope.galaxyId)} AND "bookId" = ${sql(dataset.book.id)} AND "token" = ${sql(dataset.share.token)} AND "revokedAt" IS NULL),
+      'imageAssets', (SELECT COUNT(*) FROM "MemoryAsset" WHERE "userId" = ${sql(scope.userId)} AND "galaxyId" = ${sql(scope.galaxyId)} AND "id" IN (${ids.imageAssets.map(sql).join(", ")}) AND "kind" = 'image' AND "visibility" = 'family' AND "memoryId" IS NOT NULL AND "status" = 'ready' AND "deletedAt" IS NULL),
+      'planetCovers', (
+        SELECT COUNT(*)
+        FROM "Planet" AS planet
+        JOIN "MemoryAsset" AS asset ON asset."id" = planet."coverAssetId" AND asset."userId" = planet."userId" AND asset."galaxyId" = planet."galaxyId"
+        WHERE planet."userId" = ${sql(scope.userId)}
+          AND planet."galaxyId" = ${sql(scope.galaxyId)}
+          AND asset."id" IN (${ids.planetCovers.map(sql).join(", ")})
+          AND asset."kind" = 'planet_cover'
+          AND asset."visibility" = 'private'
+          AND asset."status" = 'ready'
+          AND asset."deletedAt" IS NULL
+          AND planet."deletedAt" IS NULL
+      )
     )::text;
   `);
   const result = JSON.parse(output.trim()) as Record<string, number>;
-  const expected = { planets: 4, confirmedMemories: 8, relationships: 4, confirmedResonances: 3, readyBooks: 1, activeShares: 1 };
+  const expected = { planets: 4, confirmedMemories: 8, relationships: 4, confirmedResonances: 3, readyBooks: 1, activeShares: 1, imageAssets: 4, planetCovers: 4 };
 
   for (const [key, value] of Object.entries(expected)) {
     if (result[key] !== value) throw new Error(`演示数据写入后校验失败：${key} 应为 ${value}，实际为 ${result[key]}。`);
